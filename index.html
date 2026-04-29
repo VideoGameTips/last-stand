@@ -1,0 +1,2380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Last Stand — Zombie Outbreak</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:Georgia,serif;user-select:none}
+canvas{display:block;cursor:pointer}
+#ui{position:fixed;bottom:0;left:0;right:0;height:108px;background:rgba(5,5,5,.96);border-top:1px solid #333;display:none;align-items:center;padding:8px 10px;gap:6px;overflow-x:auto}
+#ui.show{display:flex}
+#stats{min-width:160px;padding-right:10px;border-right:1px solid #333;display:flex;flex-direction:column;gap:3px;font-family:'Courier New',monospace;font-size:12px}
+.sBtn{background:#111;border:2px solid #333;color:#ccc;padding:6px 10px;cursor:pointer;border-radius:4px;text-align:center;min-width:100px;font-family:'Courier New',monospace;flex-shrink:0}
+.sBtn:hover{background:#1c1c1c;border-color:#555}
+.sBtn.cant{opacity:.35;cursor:not-allowed}
+.sBtn.sel{background:#222;box-shadow:0 0 8px currentColor}
+.sBtn .n{font-size:13px;font-weight:bold}
+.sBtn .c{font-size:11px;color:#ffd700}
+.sBtn .d{font-size:9px;color:#888}
+#dialog{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);z-index:10}
+#dialog.show{display:flex}
+#dialogBox{background:#0a0a0a;border:1px solid #555;padding:30px 40px;border-radius:8px;max-width:560px;text-align:center;box-shadow:0 0 60px rgba(200,50,50,.3)}
+#dialogBox h2{color:#fff;font-size:30px;margin-bottom:6px;letter-spacing:2px}
+#dialogBox .sub{color:#888;font-size:14px;margin-bottom:18px;font-style:italic}
+#dialogBox .story{color:#ccc;font-size:15px;line-height:1.8;margin-bottom:24px;white-space:pre-line}
+#dialogBox button{padding:10px 28px;font-size:15px;cursor:pointer;background:#1a3a1a;border:2px solid #4a9a4a;color:#8ce88c;border-radius:4px;margin:4px;font-family:Georgia,serif;letter-spacing:1px}
+#dialogBox button:hover{background:#254a25}
+#dialogBox button.danger{background:#3a1a1a;border-color:#9a4a4a;color:#e88c8c}
+#waveMsg{position:fixed;top:70px;left:50%;transform:translateX(-50%);font-size:26px;letter-spacing:3px;font-weight:bold;text-shadow:0 0 15px #000;display:none;z-index:5}
+#hud{position:fixed;top:10px;right:10px;color:#ccc;font-size:13px;text-align:right;background:rgba(0,0,0,.75);padding:10px 14px;border-radius:4px;border:1px solid #333;display:none;line-height:1.7;font-family:'Courier New',monospace;min-width:180px}
+#hud.show{display:block}
+#topbar{position:fixed;top:0;left:0;right:0;height:40px;background:linear-gradient(to bottom,rgba(0,0,0,.95),rgba(0,0,0,.3));color:#ccc;padding:10px 20px;font-size:13px;display:none;justify-content:space-between;align-items:center;z-index:3;font-family:'Courier New',monospace}
+#topbar.show{display:flex}
+.day{color:#c33;font-weight:bold;letter-spacing:2px;font-size:14px}
+#leaveBtn{position:fixed;top:50px;right:10px;display:none;padding:6px 14px;background:#1a2a3a;border:1px solid #4a7;color:#9cf;border-radius:4px;cursor:pointer;font-family:'Courier New',monospace;font-size:12px;z-index:4}
+#leaveBtn.show{display:block}
+#leaveBtn:hover{background:#2a4a5a}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="topbar"><span class="day" id="dayText">☣ DAY 0</span><span id="statusText" style="color:#888"></span></div>
+<div id="hud"></div>
+<button id="leaveBtn">↩ Return to map (troops keep fighting)</button>
+<div id="waveMsg"></div>
+<div id="ui"></div>
+<div id="dialog"><div id="dialogBox"><h2 id="dTitle"></h2><div class="sub" id="dSub"></div><div class="story" id="dStory"></div><div id="dBtns"></div></div></div>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+resize();addEventListener('resize',resize);
+
+// ── WORLD MAP ────────────────────────────────────────────────────────────
+const MAP_W=3200,MAP_H=1600;
+const ll=(lo,la)=>({x:(lo+180)/360*MAP_W,y:(90-la)/180*MAP_H});
+const llP=p=>p.map(([a,b])=>ll(a,b));
+const CONTINENTS=[
+// Africa
+{c:'#3d5c2a',b:'#2a4020',p:llP([[-6,36],[2,37],[10,37],[15,33],[20,32],[25,32],[31,32],[33,31],[33,28],[35,23],[37,18],[42,15],[43,12],[48,12],[51,12],[51,8],[44,5],[42,-1],[40,-8],[40,-15],[40,-20],[35,-23],[32,-26],[27,-33],[20,-35],[18,-34],[14,-22],[12,-15],[12,-8],[9,-2],[8,4],[3,6],[-3,5],[-8,5],[-13,11],[-17,15],[-17,21],[-13,28],[-10,32],[-6,36]])},
+// Eurasia (single landmass; Europe + Asia + Mid East + India + SE Asia)
+{c:'#406830',b:'#2c4a20',p:llP([[-9,37],[-9,43],[-1,46],[-4,48],[-2,49],[1,51],[4,52],[8,54],[8,57],[5,58],[5,62],[12,66],[16,69],[24,70],[28,71],[40,69],[55,68],[68,70],[80,72],[100,76],[125,73],[140,72],[155,72],[170,68],[178,67],[178,62],[170,60],[160,55],[145,53],[140,48],[140,46],[135,42],[130,42],[127,38],[121,40],[120,38],[122,32],[121,28],[115,22],[110,21],[108,15],[105,10],[103,1],[100,1],[98,4],[100,8],[100,13],[97,16],[92,21],[89,22],[88,21],[88,12],[80,8],[73,16],[68,23],[64,25],[60,25],[57,22],[52,17],[48,13],[44,12],[40,15],[37,18],[35,23],[35,28],[34,31],[35,33],[36,35],[33,36],[30,37],[27,38],[23,38],[22,40],[19,40],[18,42],[14,46],[12,46],[10,44],[7,44],[3,43],[-1,43],[-9,37]])},
+// North America
+{c:'#486828',b:'#304820',p:llP([[-168,66],[-160,71],[-148,71],[-130,70],[-110,72],[-95,72],[-80,72],[-72,68],[-65,60],[-55,52],[-60,47],[-66,45],[-70,42],[-72,40],[-75,38],[-78,34],[-80,32],[-81,26],[-80,25],[-82,24],[-83,29],[-87,30],[-89,29],[-94,29],[-97,26],[-103,22],[-106,23],[-110,23],[-115,30],[-118,33],[-122,38],[-124,42],[-124,48],[-130,55],[-135,58],[-140,60],[-150,60],[-158,58],[-163,55],[-168,55],[-168,60],[-162,62],[-168,66]])},
+// Greenland
+{c:'#cfd8d0',b:'#9ea49b',p:llP([[-50,82],[-25,82],[-15,76],[-22,68],[-32,60],[-45,60],[-55,68],[-50,75],[-50,82]])},
+// South America
+{c:'#3e6028',b:'#2a4418',p:llP([[-78,12],[-72,12],[-62,10],[-53,5],[-50,0],[-48,-5],[-45,-10],[-40,-15],[-38,-22],[-48,-28],[-58,-35],[-65,-40],[-70,-50],[-72,-54],[-72,-50],[-75,-45],[-72,-35],[-72,-25],[-78,-15],[-80,-8],[-81,-2],[-78,5],[-78,12]])},
+// Australia
+{c:'#4e6a2a',b:'#344820',p:llP([[114,-22],[122,-18],[129,-15],[135,-13],[140,-12],[143,-13],[145,-15],[146,-18],[150,-22],[153,-26],[153,-30],[151,-34],[148,-37],[143,-39],[140,-38],[135,-35],[130,-32],[125,-32],[120,-34],[115,-34],[114,-30],[114,-22]])},
+// Italy (boot)
+{c:'#406830',b:'#2c4a20',p:llP([[7,44],[11,46],[13,46],[14,42],[18,40],[16,40],[16,39],[14,40],[10,42],[8,42],[7,44]])},
+// Sicily
+{c:'#406830',b:'#2c4a20',p:llP([[12,38],[15,38],[15,37],[12,37],[12,38]])},
+// Great Britain
+{c:'#3a6030',b:'#284520',p:llP([[-5,58],[-3,58.5],[-2,57],[-1,53],[1,52],[2,51],[0,50.5],[-3,51],[-5,53],[-5,58]])},
+// Ireland
+{c:'#3a6030',b:'#284520',p:llP([[-10,55],[-7,55],[-6,52],[-10,52],[-10,55]])},
+// Japan (Honshu + Kyushu)
+{c:'#406830',b:'#2c4a20',p:llP([[130,33],[131,34],[133,34],[136,35],[140,36],[141,40],[140,41],[138,38],[136,36],[134,35],[131,33],[130,33]])},
+// Hokkaido
+{c:'#406830',b:'#2c4a20',p:llP([[140,42],[145,42],[146,45],[141,45],[140,42]])},
+// Madagascar
+{c:'#3d5c2a',b:'#2a4020',p:llP([[43,-12],[50,-15],[50,-25],[44,-25],[43,-12]])},
+// New Zealand
+{c:'#4e6a2a',b:'#344820',p:llP([[173,-35],[178,-37],[176,-41],[172,-43],[167,-46],[170,-45],[173,-41],[173,-35]])},
+// Iceland
+{c:'#cfd8d0',b:'#9ea49b',p:llP([[-24,66],[-14,66],[-14,63],[-22,63],[-24,66]])},
+// Sri Lanka
+{c:'#3e6028',b:'#2a4418',p:llP([[80,9],[82,8],[82,6],[80,6],[80,9]])},
+// Borneo
+{c:'#406830',b:'#2c4a20',p:llP([[109,2],[115,7],[119,5],[119,-1],[114,-4],[109,-2],[109,2]])},
+// Sumatra
+{c:'#406830',b:'#2c4a20',p:llP([[95,5],[100,4],[105,-2],[103,-5],[97,-1],[95,5]])},
+// Java
+{c:'#406830',b:'#2c4a20',p:llP([[105,-6],[114,-7],[114,-8.5],[105,-7.5],[105,-6]])},
+// Philippines (Luzon)
+{c:'#406830',b:'#2c4a20',p:llP([[120,12],[122,13],[122,18],[120,18],[120,12]])},
+// Cuba
+{c:'#3e6028',b:'#2a4418',p:llP([[-85,22],[-74,21],[-74,23],[-85,23],[-85,22]])}
+];
+// Point-in-polygon: is (x,y) on a landmass?
+function pointInPoly(x,y,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i].x,yi=poly[i].y,xj=poly[j].x,yj=poly[j].y;
+    if(((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+function isLand(x,y){
+  for(const c of CONTINENTS){if(pointInPoly(x,y,c.p))return true}
+  return false;
+}
+// G20 nations (the 19 sovereign members) — dot is at the capital
+const WORLD_CITIES=[
+{id:'indonesia',name:'Indonesia',lon:107,lat:-6,status:'attacked'},
+{id:'argentina',name:'Argentina',lon:-58,lat:-35,status:'safe'},
+{id:'southafrica',name:'South Africa',lon:28,lat:-26,status:'safe'},
+{id:'mexico',name:'Mexico',lon:-99,lat:19,status:'safe'},
+{id:'saudiarabia',name:'Saudi Arabia',lon:47,lat:25,status:'safe'},
+{id:'turkey',name:'Türkiye',lon:33,lat:40,status:'safe'},
+{id:'brazil',name:'Brazil',lon:-48,lat:-16,status:'safe'},
+{id:'italy',name:'Italy',lon:12,lat:42,status:'safe'},
+{id:'france',name:'France',lon:2,lat:49,status:'safe'},
+{id:'germany',name:'Germany',lon:13,lat:53,status:'safe',major:true},
+{id:'canada',name:'Canada',lon:-76,lat:45,status:'safe'},
+{id:'australia',name:'Australia',lon:149,lat:-35,status:'safe'},
+{id:'southkorea',name:'South Korea',lon:127,lat:38,status:'safe'},
+{id:'india',name:'India',lon:77,lat:29,status:'safe'},
+{id:'uk',name:'United Kingdom',lon:-1,lat:51,status:'safe'},
+{id:'japan',name:'Japan',lon:140,lat:36,status:'safe'},
+{id:'russia',name:'Russia',lon:38,lat:56,status:'safe',major:true},
+{id:'china',name:'China',lon:116,lat:40,status:'safe',major:true},
+{id:'usa',name:'United States',lon:-77,lat:39,status:'safe',major:true},
+// Other widely-known nations
+{id:'northkorea',name:'North Korea',lon:125,lat:39,status:'safe'},
+{id:'israel',name:'Israel',lon:35,lat:31,status:'safe'},
+{id:'iran',name:'Iran',lon:51,lat:35,status:'safe'},
+{id:'egypt',name:'Egypt',lon:31,lat:30,status:'safe'},
+{id:'ukraine',name:'Ukraine',lon:30,lat:50,status:'safe'},
+{id:'pakistan',name:'Pakistan',lon:73,lat:33,status:'safe'},
+{id:'vietnam',name:'Vietnam',lon:105,lat:21,status:'safe',major:true},
+{id:'thailand',name:'Thailand',lon:100,lat:13,status:'safe'},
+{id:'spain',name:'Spain',lon:-3,lat:40,status:'safe'},
+{id:'poland',name:'Poland',lon:21,lat:52,status:'safe'},
+{id:'greece',name:'Greece',lon:23,lat:37,status:'safe'},
+{id:'singapore',name:'Singapore',lon:103,lat:1,status:'safe'},
+{id:'philippines',name:'Philippines',lon:120,lat:14,status:'safe'},
+{id:'nigeria',name:'Nigeria',lon:7,lat:9,status:'safe'},
+{id:'kenya',name:'Kenya',lon:36,lat:-1,status:'safe'}
+];
+WORLD_CITIES.forEach(c=>Object.assign(c,ll(c.lon,c.lat)));
+
+// ── CITY DEFENSE ─────────────────────────────────────────────────────────
+const TILE=50,GRID_W=20,GRID_H=12;
+const STREET_GRID=[
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0],
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+];
+const CITY_DEF={
+indonesia:{name:'Jakarta',country:'Indonesia',pop:'277 million',flavor:"Patient zero on a tropical archipelago.\nThe outbreak began here.",hq:{col:0,row:5},spawns:[{col:19,row:2},{col:19,row:8}],waves:5,diff:1.0},
+argentina:{name:'Buenos Aires',country:'Argentina',pop:'46 million',flavor:"Pampas wind carries the smell of the dead.\nHold the boulevards.",hq:{col:9,row:5},spawns:[{col:19,row:2},{col:0,row:8}],waves:6,diff:1.15},
+southafrica:{name:'Pretoria',country:'South Africa',pop:'62 million',flavor:"The Cape has fallen silent.\nDefend the capital.",hq:{col:0,row:11},spawns:[{col:19,row:2},{col:19,row:8},{col:14,row:0}],waves:6,diff:1.3},
+mexico:{name:'Mexico City',country:'Mexico',pop:'128 million',flavor:"22 million in the valley.\nThe streets fill quickly.",hq:{col:9,row:8},spawns:[{col:19,row:2},{col:0,row:2},{col:19,row:11}],waves:7,diff:1.45},
+saudiarabia:{name:'Riyadh',country:'Saudi Arabia',pop:'36 million',flavor:"Desert offers no refuge.\nThe oil flows, the dead follow.",hq:{col:14,row:5},spawns:[{col:0,row:2},{col:0,row:8},{col:19,row:5}],waves:7,diff:1.6},
+turkey:{name:'Ankara',country:'Türkiye',pop:'85 million',flavor:"At the crossroads of two continents.\nBoth are burning.",hq:{col:4,row:5},spawns:[{col:19,row:2},{col:19,row:8},{col:9,row:11}],waves:8,diff:1.75},
+brazil:{name:'Brasília',country:'Brazil',pop:'215 million',flavor:"The favelas were overrun in hours.\nThe capital is next.",hq:{col:9,row:5},spawns:[{col:19,row:2},{col:0,row:2},{col:19,row:8},{col:0,row:8}],waves:8,diff:1.9},
+italy:{name:'Rome',country:'Italy',pop:'59 million',flavor:"The Eternal City was not meant to end.\nThe Vatican is silent.",hq:{col:0,row:5},spawns:[{col:19,row:2},{col:19,row:5},{col:19,row:8}],waves:9,diff:2.0},
+france:{name:'Paris',country:'France',pop:'68 million',flavor:"The City of Light has gone dark.\nHold the boulevards.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:9,row:11}],waves:9,diff:2.15},
+germany:{name:'Berlin',country:'Germany',pop:'84 million',flavor:"The Brandenburg Gate stands open to the dead.",hq:{col:14,row:5},spawns:[{col:0,row:2},{col:0,row:5},{col:0,row:8},{col:9,row:11}],waves:10,diff:2.3},
+canada:{name:'Ottawa',country:'Canada',pop:'40 million',flavor:"Cold won't stop them.\nDefend the Hill.",hq:{col:0,row:5},spawns:[{col:19,row:2},{col:19,row:8},{col:14,row:11}],waves:10,diff:2.45},
+australia:{name:'Canberra',country:'Australia',pop:'26 million',flavor:"The continent is encircled.\nThis is the last fortress.",hq:{col:9,row:8},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:11},{col:19,row:11}],waves:11,diff:2.6},
+southkorea:{name:'Seoul',country:'South Korea',pop:'52 million',flavor:"The DMZ has been breached from both sides.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8}],waves:11,diff:2.75},
+india:{name:'New Delhi',country:'India',pop:'1.4 billion',flavor:"1.4 billion. No army can hold them all.",hq:{col:14,row:5},spawns:[{col:0,row:2},{col:0,row:5},{col:0,row:8},{col:9,row:11},{col:19,row:11}],waves:12,diff:2.9},
+uk:{name:'London',country:'United Kingdom',pop:'67 million',flavor:"The Thames is full of the dead.\nParliament stands empty.",hq:{col:0,row:5},spawns:[{col:19,row:2},{col:19,row:5},{col:19,row:8},{col:14,row:11}],waves:12,diff:3.05},
+japan:{name:'Tokyo',country:'Japan',pop:'125 million',flavor:"The most populous city on Earth — all infected.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8},{col:9,row:11}],waves:13,diff:3.2},
+russia:{name:'Moscow',country:'Russia',pop:'144 million',flavor:"Red Square ran red.\nHold the Kremlin.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8},{col:0,row:11}],waves:13,diff:3.4},
+china:{name:'Beijing',country:'China',pop:'1.4 billion',flavor:"1.4 billion infected.\nThe Forbidden City is open.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8},{col:0,row:11},{col:19,row:11}],waves:14,diff:3.6},
+usa:{name:'Washington D.C.',country:'United States',pop:'333 million',flavor:"The last great power.\nIf the Capitol falls, humanity is finished.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8},{col:0,row:11},{col:19,row:11},{col:9,row:11}],waves:15,diff:3.8},
+kenya:{name:'Nairobi',country:'Kenya',pop:'54 million',flavor:"The savanna runs red.\nKDF holds the airport.",hq:{col:9,row:5},spawns:[{col:19,row:2},{col:0,row:8}],waves:5,diff:1.05},
+nigeria:{name:'Abuja',country:'Nigeria',pop:'223 million',flavor:"Lagos has fallen.\nThe capital is the last hope.",hq:{col:0,row:11},spawns:[{col:19,row:2},{col:19,row:8},{col:14,row:0}],waves:6,diff:1.25},
+egypt:{name:'Cairo',country:'Egypt',pop:'109 million',flavor:"Ancient streets, narrow and winding.\nThe Nile cannot stop the dead.",hq:{col:9,row:8},spawns:[{col:19,row:2},{col:0,row:2},{col:19,row:11},{col:0,row:11}],waves:7,diff:1.5},
+thailand:{name:'Bangkok',country:'Thailand',pop:'72 million',flavor:"The klongs are choked with the dead.\nHold the Grand Palace.",hq:{col:14,row:5},spawns:[{col:0,row:2},{col:0,row:8},{col:19,row:5}],waves:7,diff:1.55},
+philippines:{name:'Manila',country:'Philippines',pop:'117 million',flavor:"7,000 islands, no escape.\nThe bay is dark with bodies.",hq:{col:4,row:5},spawns:[{col:19,row:2},{col:19,row:8},{col:9,row:11}],waves:8,diff:1.7},
+vietnam:{name:'Hanoi',country:'Vietnam',pop:'99 million',flavor:"The Red River runs darker than ever.",hq:{col:9,row:5},spawns:[{col:19,row:2},{col:0,row:2},{col:19,row:8},{col:0,row:8}],waves:8,diff:1.85},
+singapore:{name:'Singapore',country:'Singapore',pop:'5.9 million',flavor:"Tiny, dense, and surrounded.\nThe MRT tunnels are full.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:9,row:11}],waves:8,diff:1.95},
+greece:{name:'Athens',country:'Greece',pop:'10 million',flavor:"The cradle of civilization is collapsing.\nThe Acropolis stands alone.",hq:{col:0,row:5},spawns:[{col:19,row:2},{col:19,row:5},{col:19,row:8}],waves:9,diff:2.05},
+spain:{name:'Madrid',country:'Spain',pop:'48 million',flavor:"The plaza is silent.\nThe metro echoes with moans.",hq:{col:9,row:8},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:11},{col:19,row:11}],waves:9,diff:2.2},
+poland:{name:'Warsaw',country:'Poland',pop:'38 million',flavor:"The Old Town has fallen twice in a century.\nThis is the third.",hq:{col:14,row:5},spawns:[{col:0,row:2},{col:0,row:5},{col:0,row:8},{col:9,row:11}],waves:10,diff:2.35},
+ukraine:{name:'Kyiv',country:'Ukraine',pop:'41 million',flavor:"The Dnieper carries the dead westward.\nDefend the Maidan.",hq:{col:0,row:5},spawns:[{col:19,row:2},{col:19,row:8},{col:14,row:11}],waves:10,diff:2.5},
+pakistan:{name:'Islamabad',country:'Pakistan',pop:'241 million',flavor:"Karachi is overrun.\nThe Margalla Hills offer no shelter.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8}],waves:11,diff:2.65},
+iran:{name:'Tehran',country:'Iran',pop:'89 million',flavor:"The Alborz peaks watch the city die.\nHold the bazaar.",hq:{col:14,row:5},spawns:[{col:0,row:2},{col:0,row:5},{col:0,row:8},{col:9,row:11}],waves:11,diff:2.8},
+israel:{name:'Jerusalem',country:'Israel',pop:'9.7 million',flavor:"Three faiths, one nightmare.\nThe Old City walls hold for now.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8},{col:9,row:11}],waves:12,diff:3.0},
+northkorea:{name:'Pyongyang',country:'North Korea',pop:'26 million',flavor:"The hermit kingdom opened its borders — outward.\nThe DMZ is breached.",hq:{col:9,row:5},spawns:[{col:0,row:2},{col:19,row:2},{col:0,row:8},{col:19,row:8},{col:0,row:11}],waves:13,diff:3.3}
+};
+
+const SOLDIERS=[
+{id:'rifle',name:'Rifleman',cost:80,dmg:20,range:130,rate:35,spd:1.4,retreat:55,hp:100,color:'#4af',desc:'Basic infantry'},
+{id:'sniper',name:'Sniper',cost:180,dmg:90,range:240,rate:120,spd:1.1,retreat:80,hp:80,color:'#fa6',desc:'Long range'},
+{id:'mg',name:'MG Squad',cost:260,dmg:11,range:110,rate:6,spd:1.0,retreat:60,hp:120,color:'#f55',desc:'Rapid fire'},
+{id:'tank',name:'Tank',cost:420,dmg:55,range:170,rate:55,spd:0.75,retreat:25,hp:320,color:'#7c4',desc:'Armored'},
+{id:'arty',name:'Heavy',cost:550,dmg:120,range:300,rate:170,spd:0.8,retreat:90,hp:90,color:'#c6f',desc:'AOE blast',aoe:65}
+];
+
+// Player weapons (purchased with city gold during a defense)
+const WEAPONS=[
+{id:'pistol',name:'Pistol',cost:0,dmg:18,rate:14,spd:9,range:340,color:'#ddd',desc:'Starter'},
+{id:'revolver',name:'Revolver',cost:200,dmg:55,rate:30,spd:10,range:380,color:'#fa6',desc:'High dmg'},
+{id:'ak',name:'AK-47',cost:400,dmg:22,rate:5,spd:10,range:360,color:'#9cf',desc:'Full auto'},
+{id:'glauncher',name:'Grenade Launcher',cost:700,dmg:80,rate:55,spd:6,range:440,aoe:55,color:'#7c4',desc:'AOE arc'},
+{id:'rpg',name:'RPG',cost:1200,dmg:220,rate:90,spd:8,range:520,aoe:75,color:'#f55',desc:'Massive AOE'}
+];
+
+// World-map strategic builds (static + mobile divisions with retreat AI)
+const WORLD_BUILDS=[
+{id:'cannon',name:'Artillery',cost:250,range:135,dmg:30,rate:75,color:'#fc6',desc:'Static · hits hordes'},
+{id:'fob',name:'Forward Base',cost:500,income:2,radius:120,color:'#7af',hp:400,desc:'+gold income · destructible'},
+{id:'wire',name:'Barbed Wire',cost:100,radius:40,slow:.35,dmg:.15,color:'#bbb',desc:'500km · slows + bleeds hordes'},
+{id:'hospital',name:'Field Hospital',cost:400,radius:90,heal:.08,color:'#4cf',desc:'Heals divs · 50% reanimate'},
+{id:'checkpoint',name:'Checkpoint',cost:150,radius:55,blockR:18,slow:.45,dmg:.06,color:'#fc4',desc:'Reroutes + slows + light dmg'},
+{id:'rifle-div',name:'Rifle Div',cost:300,range:65,dmg:18,rate:30,color:'#4af',mobile:true,spd:.45,hp:200,retreat:30,desc:'Mobile infantry'},
+{id:'ar-div',name:'AR Div',cost:380,range:70,dmg:12,rate:12,color:'#6cf',mobile:true,spd:.42,hp:210,retreat:32,desc:'Assault rifle · burst fire'},
+{id:'transport',name:'Transport',cost:350,range:0,dmg:0,rate:9999,color:'#9b6',mobile:true,spd:.6,hp:220,retreat:0,splitInto:'rifle-div',splitCount:2,splitTrigger:90,desc:'Fast · splits into 2 Rifle Divs near zombies'},
+{id:'fav-div',name:'Fast Attack',cost:450,range:75,dmg:10,rate:10,color:'#fd6',mobile:true,spd:.7,hp:180,retreat:30,desc:'Light buggy · very fast'},
+{id:'sniper-div',name:'Sniper Div',cost:450,range:140,dmg:60,rate:90,color:'#fa6',mobile:true,spd:.35,hp:140,retreat:55,desc:'Long-range'},
+{id:'apc-div',name:'Armored Vehicle',cost:550,range:70,dmg:22,rate:25,color:'#9b8',mobile:true,spd:.3,hp:350,retreat:18,desc:'APC · tough mid-armor'},
+{id:'mg-div',name:'MG Div',cost:550,range:75,dmg:9,rate:6,color:'#f55',mobile:true,spd:.3,hp:220,retreat:35,unlockDay:13,desc:'Rapid fire · day 13+'},
+{id:'rpg-div',name:'RPG Div',cost:600,range:100,dmg:75,rate:80,aoe:40,color:'#fb4',mobile:true,spd:.35,hp:180,retreat:42,unlockDay:13,desc:'Rockets · AOE · day 13+'},
+{id:'gatling-div',name:'Gatling Div',cost:700,range:80,dmg:6,rate:3,color:'#e36',mobile:true,spd:.25,hp:240,retreat:38,unlockDay:13,desc:'Minigun · shred · day 13+'},
+{id:'tank-div',name:'Tank Div',cost:700,range:80,dmg:55,rate:55,color:'#7c4',mobile:true,spd:.25,hp:500,retreat:14,unlockDay:13,desc:'Heavy armor · day 13+'},
+{id:'ak-plane',name:'AK Plane',cost:650,range:110,dmg:14,rate:5,color:'#9cf',mobile:true,air:true,spd:.7,hp:160,retreat:0,unlockDay:13,desc:'Fast aerial AK · day 13+'},
+{id:'bomber',name:'Bomber',cost:900,range:130,dmg:90,rate:120,aoe:55,color:'#fa4',mobile:true,air:true,spd:.45,hp:240,retreat:0,unlockDay:20,desc:'AOE bombs · day 20+'},
+{id:'pyro',name:'Pyro Gunner',cost:520,range:75,dmg:6,rate:3,aoe:35,color:'#f63',mobile:true,spd:.36,hp:240,retreat:45,unlockDay:20,desc:'Flame · AOE rapid · day 20+'},
+{id:'mech',name:'Combat Mech',cost:1500,range:95,dmg:7,rate:4,color:'#cdd',mobile:true,spd:.32,hp:350,retreat:25,noInfect:true,unlockCheck:'chinaThreat',desc:'Dual MG · armored · cannot turn'}
+];
+
+// ── STATE ────────────────────────────────────────────────────────────────
+let screen='intro',introStep=0,introFade=0;
+const INTRO=[
+{t:'LAST STAND',s:'',b:'A zombie outbreak story.'},
+{t:'DAY 0',s:'Kinshasa, DR Congo',b:'A nurse at Mama Yemo Hospital reports patients\nwith unusual aggression and bite wounds.\nShe is the first victim.'},
+{t:'DAY 3',s:'Central Africa',b:'The WHO declares an emergency.\nHospitals overwhelmed. Cities fall.\nThe dead do not stay dead.'},
+{t:'DAY 9',s:'Worldwide',b:'The infection crosses every ocean.\nGovernments collapse. Borders close.\nHordes move between cities.'},
+{t:'DAY 14',s:'UN Rapid Response Command',b:'You command the last organized force.\nMap: artillery, bases, mobile divisions.\nCities: rifles, snipers, MGs, tanks, heavies.\nDefend many cities at once.\nHold the line.'}
+];
+let wCam={x:MAP_W/2+200,y:MAP_H/2,zoom:.45};
+let worldDay=0,worldTimer=0,hordeSpawnTimer=1200; // 20s prep
+let worldPrepTimer=1200; // global pre-game prep window
+let hordes=[];
+let worldStructures=[];
+let worldGold=3000,worldGoldTick=0;
+// Toxic gas — appears after day 50. Random unpredictable bursts:
+// 10s warning, then 10s zombie deployment, total 20s lifespan, every 30s.
+const GAS_ZONES=[];
+const GAS_FIRST_DAY=50;
+const GAS_INTERVAL=1800;     // 30s between bursts
+const GAS_WARN_TIME=600;     // 10s warning phase
+const GAS_DEPLOY_TIME=600;   // 10s deployment phase
+const GAS_LIFE=GAS_WARN_TIME+GAS_DEPLOY_TIME; // 20s total
+let gasSpawnTimer=GAS_INTERVAL;
+// Pandemic zones: permanent endless horde spawners
+const PANDEMIC_ZONES=[];
+const ZONE_HP=800;
+// Mobile divisions cannot be deployed inside this radius around the ORIGINAL pandemic zones
+// (Banda Sea / D42 / Area 51). Pandemic zones formed from fallen countries have NO restriction.
+const NO_SPAWN_R=240;
+function addPandemicZone(lon,lat,name,kind){
+  const p=ll(lon,lat);
+  PANDEMIC_ZONES.push({x:p.x,y:p.y,name,kind:kind||'normal',spawnTimer:60,pulse:0,hp:ZONE_HP,maxHp:ZONE_HP,cityId:null,alphaId:null,alphaCooldown:0});
+}
+// Ground zero — Banda Sea: fast island-spread (rapid bursts, far reach)
+addPandemicZone(125,-5,'Pandemic Zone Alpha','spread');
+// D42: mass output — multiple hordes per pulse
+addPandemicZone(22,2,'D42','mass');
+// Area 51: heavy mutations + houses the singular Alpha Zombie
+addPandemicZone(-116,37,'Area 51','alpha');
+// D42 and Area 51 are land-locked and tend to get cleared too fast — give them
+// a 5-horde opening salvo the moment prep ends.
+PANDEMIC_ZONES.forEach(z=>{if(z.name==='D42'||z.name==='Area 51')z.openingBurst=5});
+// Recon — Satellite Scan ability. While scanActive>0 fog/forest don't blind targeting and
+// hidden hordes/troops are visible to the player.
+const SCAN_COST=500;
+const SCAN_TIME=600;       // 10s active
+const SCAN_COOLDOWN=900;   // 15s cooldown after expiry
+let scanActive=0,scanCool=0;
+// Airstrike — click to arm, click on map to designate. 3s flight delay then AOE strike.
+const AIRSTRIKE_COST=400;
+const AIRSTRIKE_DELAY=180;     // 3s @ 60fps
+const AIRSTRIKE_AOE=70;
+const AIRSTRIKE_DMG=220;
+const AIRSTRIKE_COOLDOWN=900;  // 15s
+let airstrikeArmed=false,airstrikeCool=0;
+const pendingAirstrikes=[];
+
+// ── FOREST ZONES & FOG ────────────────────────────────────────────────────
+// Forests slow troop movement and hide zombies from troops until close range.
+// Pandemic zones emit fog that blinds units (mutual blindness) — player still sees everything.
+const FOREST_ZONES=[
+  // Large signature forests
+  {name:'Amazon',lon:-62,lat:-4,r:135},
+  {name:'Congo',lon:22,lat:0,r:110},
+  {name:'Siberian Taiga',lon:100,lat:62,r:170},
+  {name:'Borneo',lon:114,lat:1,r:75},
+  {name:'New Guinea',lon:142,lat:-5,r:70},
+  // North America
+  {name:'Pacific NW',lon:-122,lat:46,r:42},
+  {name:'Appalachia',lon:-82,lat:37,r:48},
+  {name:'Boreal Canada',lon:-95,lat:55,r:60},
+  // South America
+  {name:'Atlantic Forest',lon:-44,lat:-22,r:40},
+  {name:'Patagonia',lon:-72,lat:-45,r:38},
+  // Africa
+  {name:'Guinea Forest',lon:-9,lat:7,r:42},
+  {name:'Madagascar',lon:48,lat:-19,r:35},
+  // Asia
+  {name:'Western Ghats',lon:76,lat:12,r:38},
+  {name:'Honshu Woods',lon:138,lat:37,r:35},
+  {name:'Annamite Range',lon:107,lat:16,r:38},
+  // Europe
+  {name:'Black Forest',lon:8,lat:48,r:32},
+  {name:'Carpathians',lon:25,lat:47,r:40},
+  {name:'Scandinavian Taiga',lon:15,lat:62,r:55},
+  // Oceania
+  {name:'Eastern AU',lon:152,lat:-30,r:42},
+  {name:'Tasmania',lon:146,lat:-42,r:28},
+];
+FOREST_ZONES.forEach(f=>{
+  Object.assign(f,ll(f.lon,f.lat));
+  f.trees=[];
+  for(let i=0;i<70;i++){
+    f.trees.push({a:Math.random()*Math.PI*2,rr:Math.sqrt(Math.random())*.93,sz:1.3+Math.random()*1.1});
+  }
+});
+// Per-country starting military strength. Determines how many free cannons
+// (and possibly a wire ring) are pre-placed around each city at game start.
+const MIL_RATING={
+  usa:4,russia:4,china:4,
+  india:3,uk:3,france:3,germany:3,japan:3,southkorea:3,northkorea:3,israel:3,iran:3,pakistan:3,turkey:3,
+  italy:2,australia:2,canada:2,saudiarabia:2,vietnam:2,egypt:2,ukraine:2,poland:2,spain:2,brazil:2,
+  // everyone else defaults to 1
+};
+function spawnStarterMilitary(){
+  WORLD_CITIES.forEach(c=>{
+    if(c.status!=='safe')return; // skip Indonesia (already attacked)
+    const tier=MIL_RATING[c.id]||1;
+    // Place `tier` cannons in a ring, plus one wire ring at the capital for tier ≥ 3.
+    for(let i=0;i<tier;i++){
+      const a=(i/tier)*Math.PI*2 + (c.id.charCodeAt(0)%7)*.3;
+      const rad=24+tier*4;
+      const cx=c.x+Math.cos(a)*rad,cy=c.y+Math.sin(a)*rad;
+      if(!isLand(cx,cy))continue;
+      worldStructures.push({type:'cannon',x:cx,y:cy,cooldown:0,hp:0,maxHp:0,state:'idle'});
+    }
+    if(tier>=3){
+      worldStructures.push({type:'wire',x:c.x,y:c.y,cooldown:0,hp:0,maxHp:0,state:'idle'});
+    }
+  });
+  // Starter Forward Bases: one each at USA, Russia, China (the three founding superpowers).
+  const fobDef=WORLD_BUILDS.find(b=>b.id==='fob');
+  ['usa','russia','china'].forEach(id=>{
+    const c=WORLD_CITIES.find(x=>x.id===id);
+    if(!c)return;
+    worldStructures.push({type:'fob',x:c.x+18,y:c.y-18,cooldown:0,hp:fobDef.hp,maxHp:fobDef.hp,state:'idle'});
+  });
+}
+const PANDEMIC_FOG_R=85;   // px radius of fog around each pandemic zone
+const FOREST_REVEAL=26;    // troops reveal hordes within this px range inside forest
+spawnStarterMilitary();
+function inForestAt(x,y){for(const f of FOREST_ZONES)if(Math.hypot(x-f.x,y-f.y)<f.r)return f;return null}
+function inPandemicFogAt(x,y){for(const z of PANDEMIC_ZONES){if((z.hp||0)<=0)continue;if(Math.hypot(x-z.x,y-z.y)<PANDEMIC_FOG_R)return z}return null}
+// True if a unit at (ax,ay) cannot detect/target something at (tx,ty) due to fog/forest.
+function fogBlocks(ax,ay,tx,ty){
+  if(scanActive>0)return false; // satellite scan reveals everything for friendlies
+  if(inPandemicFogAt(ax,ay)||inPandemicFogAt(tx,ty))return true;
+  if(inForestAt(ax,ay)||inForestAt(tx,ty)){
+    return Math.hypot(tx-ax,ty-ay)>FOREST_REVEAL;
+  }
+  return false;
+}
+let buildMode=null;
+
+// Per-city defense state (multi-defense). Keyed by city id.
+const defenses={};
+let viewedDefId=null; // which defense the player is currently watching/managing
+let mouseX=0,mouseY=0;
+
+// ── DOM ──────────────────────────────────────────────────────────────────
+const uiEl=document.getElementById('ui'),hudEl=document.getElementById('hud');
+const topbar=document.getElementById('topbar'),dayText=document.getElementById('dayText'),statusText=document.getElementById('statusText');
+const dlgEl=document.getElementById('dialog'),dlgTitle=document.getElementById('dTitle'),dlgSub=document.getElementById('dSub'),dlgStory=document.getElementById('dStory'),dlgBtns=document.getElementById('dBtns');
+const waveMsgEl=document.getElementById('waveMsg');
+const leaveBtn=document.getElementById('leaveBtn');
+leaveBtn.onclick=()=>returnToMap();
+
+function showDialog(t,s,b,btns){
+  dlgTitle.textContent=t;dlgSub.textContent=s||'';dlgStory.textContent=b||'';dlgBtns.innerHTML='';
+  btns.forEach(o=>{const e=document.createElement('button');e.textContent=o.label;if(o.danger)e.className='danger';e.onclick=o.onClick;dlgBtns.appendChild(e)});
+  dlgEl.classList.add('show');
+}
+function hideDialog(){dlgEl.classList.remove('show')}
+
+const EVAC_TIME=900; // 15s evacuation delay
+const EVAC_COST=200;
+function openCityDialog(id){
+  const def=CITY_DEF[id],wc=WORLD_CITIES.find(c=>c.id===id);if(!def||!wc)return;
+  if(wc.status==='fallen'&&(wc.fallTimer||0)>0){showFallenChoiceDialog(id);return}
+  const head=def.country+' — Population: '+def.pop;
+  if(wc.evacuated){
+    showDialog(def.name.toUpperCase(),head,'✓ Civilians have been evacuated.\nIf this country falls it will not become a pandemic zone.',[
+      {label:'OK',onClick:hideDialog}
+    ]);return;
+  }
+  if(wc.evacuating){
+    const sec=Math.ceil((wc.evacTimer||0)/60);
+    showDialog(def.name.toUpperCase(),head,`▲ Evacuation in progress — ${sec}s remaining.`,[
+      {label:'OK',onClick:hideDialog}
+    ]);return;
+  }
+  const isWarned=wc.status==='warned';
+  const intro=isWarned?'⚠ HORDE INBOUND. Civilians can still be evacuated.\n\n':'⚠ Country is under attack. Evacuation is risky but possible.\n\n';
+  showDialog(def.name.toUpperCase(),head,intro+def.flavor,[
+    {label:`▲ EVACUATE CIVILIANS ($${EVAC_COST}) — 15s`,onClick:()=>startEvacuation(id)},
+    {label:'BACK',danger:true,onClick:hideDialog}
+  ]);
+}
+function startEvacuation(id){
+  if(worldGold<EVAC_COST){flash(`Need $${EVAC_COST} world gold`,'#f66',1500);return}
+  const wc=WORLD_CITIES.find(c=>c.id===id);if(!wc||wc.evacuating||wc.evacuated)return;
+  worldGold-=EVAC_COST;
+  wc.evacuating=true;wc.evacTimer=EVAC_TIME;
+  flash(`▲ Evacuating ${wc.name}…`,'#9cf',2000);
+  hideDialog();
+}
+
+// ── BFS PATHFINDING ─────────────────────────────────────────────────────
+const visitedBuf=new Uint8Array(GRID_W*GRID_H);
+function bfs(sc,sr,tc,tr){
+  if(sc<0||sc>=GRID_W||sr<0||sr>=GRID_H||tc<0||tc>=GRID_W||tr<0||tr>=GRID_H)return null;
+  if(STREET_GRID[sr][sc]!==0||STREET_GRID[tr][tc]!==0)return null;
+  if(sc===tc&&sr===tr)return [];
+  visitedBuf.fill(0);
+  const prev=new Int16Array(GRID_W*GRID_H);prev.fill(-1);
+  const q=[sc+sr*GRID_W];visitedBuf[sc+sr*GRID_W]=1;
+  const D=[[1,0],[-1,0],[0,1],[0,-1]];
+  let found=false;
+  while(q.length){
+    const idx=q.shift(),c=idx%GRID_W,r=Math.floor(idx/GRID_W);
+    if(c===tc&&r===tr){found=true;break}
+    for(const [dc,dr] of D){
+      const nc=c+dc,nr=r+dr;
+      if(nc<0||nc>=GRID_W||nr<0||nr>=GRID_H)continue;
+      const ni=nc+nr*GRID_W;
+      if(visitedBuf[ni])continue;
+      if(STREET_GRID[nr][nc]!==0)continue;
+      visitedBuf[ni]=1;prev[ni]=idx;q.push(ni);
+    }
+  }
+  if(!found)return null;
+  const path=[];let cur=tc+tr*GRID_W;
+  while(cur!==sc+sr*GRID_W){
+    path.unshift({col:cur%GRID_W,row:Math.floor(cur/GRID_W)});
+    cur=prev[cur];if(cur<0)break;
+  }
+  return path;
+}
+
+function tilePxFor(s,c,r){return{x:s.offset.x+c*TILE+TILE/2,y:s.offset.y+r*TILE+TILE/2}}
+
+// ── ENTER / LEAVE CITY ──────────────────────────────────────────────────
+function getOrCreateDefense(id){
+  if(defenses[id])return defenses[id];
+  const def=CITY_DEF[id];
+  const cw=GRID_W*TILE,ch=GRID_H*TILE;
+  const offset={x:Math.floor((canvas.width-cw)/2),y:Math.floor((canvas.height-118-ch)/2)+24};
+  const s={
+    id,def,offset,
+    hq:def.hq,
+    zombies:[],soldiers:[],bullets:[],particles:[],pBullets:[],
+    gold:1000,wave:0,maxWaves:def.waves,lives:20,
+    waveTimer:0,betweenWaves:true,nextWaveDelay:900,prepActive:true,
+    spawnQueue:[],result:null,goldTick:0,
+    player:null
+  };
+  s.hqpx=tilePxFor(s,s.hq.col,s.hq.row);
+  s.player={x:s.hqpx.x,y:s.hqpx.y+24,hp:200,maxHp:200,weapon:'pistol',owned:['pistol'],fireTimer:0,aim:0,respawn:0};
+  defenses[id]=s;
+  return s;
+}
+
+function enterCity(id){
+  hideDialog();
+  const s=getOrCreateDefense(id);
+  // Refresh offset/hqpx in case canvas resized
+  const cw=GRID_W*TILE,ch=GRID_H*TILE;
+  s.offset.x=Math.floor((canvas.width-cw)/2);
+  s.offset.y=Math.floor((canvas.height-118-ch)/2)+24;
+  s.hqpx=tilePxFor(s,s.hq.col,s.hq.row);
+  viewedDefId=id;
+  screen='citydefense';
+  buildSoldierUI();
+  uiEl.classList.add('show');hudEl.classList.add('show');topbar.classList.add('show');
+  leaveBtn.classList.add('show');
+  if(s.prepActive)flash(`PREP — Deploy soldiers before the horde arrives`,'#fa4',2800);
+}
+
+function returnToMap(){
+  // Leave city view but keep defense running in the background
+  screen='worldmap';viewedDefId=null;
+  hudEl.classList.remove('show');leaveBtn.classList.remove('show');
+  buildWorldUI();uiEl.classList.add('show');
+  topbar.classList.add('show');hideDialog();
+}
+
+function exitDefenseAfterResult(){
+  // Called after win/lose dialog dismissed
+  hideDialog();
+  if(viewedDefId&&defenses[viewedDefId]&&defenses[viewedDefId].result){delete defenses[viewedDefId]}
+  returnToMap();
+}
+
+// ── SOLDIER UI ───────────────────────────────────────────────────────────
+let soldierBtnEls=[];
+let weaponBtnEls=[];
+function buildSoldierUI(){
+  uiEl.innerHTML='';soldierBtnEls=[];weaponBtnEls=[];
+  const stats=document.createElement('div');stats.id='stats';uiEl.appendChild(stats);
+  SOLDIERS.forEach(t=>{
+    const b=document.createElement('div');b.className='sBtn';
+    b.innerHTML=`<div class="n" style="color:${t.color}">${t.name}</div><div class="c">$${t.cost}</div><div class="d">${t.desc}</div>`;
+    b.dataset.id=t.id;
+    b.onclick=()=>buySoldier(t);
+    uiEl.appendChild(b);soldierBtnEls.push(b);
+  });
+  // Divider
+  const div=document.createElement('div');
+  div.style.cssText='border-left:1px solid #444;height:80px;margin:0 4px;flex-shrink:0';
+  uiEl.appendChild(div);
+  WEAPONS.forEach(w=>{
+    const b=document.createElement('div');b.className='sBtn';
+    const label=w.cost===0?'STARTER':`$${w.cost}`;
+    b.innerHTML=`<div class="n" style="color:${w.color}">🔫 ${w.name}</div><div class="c">${label}</div><div class="d">${w.desc}</div>`;
+    b.dataset.wid=w.id;
+    b.onclick=()=>buyOrEquipWeapon(w);
+    uiEl.appendChild(b);weaponBtnEls.push(b);
+  });
+}
+function buyOrEquipWeapon(w){
+  const s=defenses[viewedDefId];if(!s||s.result||!s.player)return;
+  const p=s.player;
+  if(p.owned.includes(w.id)){p.weapon=w.id;flash(`Equipped ${w.name}`,w.color,1000);return}
+  if(s.gold<w.cost){flash(`Not enough gold ($${w.cost})`,'#f66',1200);return}
+  s.gold-=w.cost;p.owned.push(w.id);p.weapon=w.id;
+  flash(`✓ ${w.name} purchased & equipped`,w.color,1500);
+}
+function updateSoldierUI(){
+  const s=defenses[viewedDefId];if(!s)return;
+  soldierBtnEls.forEach(b=>{const t=SOLDIERS.find(x=>x.id===b.dataset.id);b.classList.toggle('cant',s.gold<t.cost)});
+  const p=s.player;
+  weaponBtnEls.forEach(b=>{
+    const w=WEAPONS.find(x=>x.id===b.dataset.wid);
+    const owned=p&&p.owned.includes(w.id);
+    const equipped=p&&p.weapon===w.id;
+    b.classList.toggle('cant',!owned&&s.gold<w.cost);
+    b.classList.toggle('sel',!!equipped);
+    b.style.color=w.color;
+  });
+  const stats=document.getElementById('stats');
+  const hpLine=p?`<div style="color:#9cf">🧍 You: ${Math.max(0,Math.ceil(p.hp))}/${p.maxHp}</div>`:'';
+  if(stats)stats.innerHTML=`<div style="color:#c33;font-weight:bold">${s.def.name.toUpperCase()}</div><div style="color:#ffd700">💰 ${s.gold}</div><div style="color:#88aaff">Wave ${s.wave}/${s.maxWaves}</div><div style="color:#ff8888">❤ HQ: ${s.lives}</div><div style="color:#88ff88">☣ ${s.zombies.length}</div>${hpLine}`;
+}
+function buySoldier(type){
+  const s=defenses[viewedDefId];if(!s||s.result||s.gold<type.cost)return;
+  s.gold-=type.cost;
+  s.soldiers.push({
+    x:s.hqpx.x+(Math.random()-.5)*20,y:s.hqpx.y+(Math.random()-.5)*20,
+    col:s.hq.col,row:s.hq.row,type,
+    hp:type.hp||100,maxHp:type.hp||100,fireTimer:0,
+    state:'approach',path:[],pathTC:-1,pathTR:-1,pathTimer:0
+  });
+}
+
+// ── WORLD UI ─────────────────────────────────────────────────────────────
+let worldBtnEls=[];
+function buildWorldUI(){
+  uiEl.innerHTML='';worldBtnEls=[];
+  const stats=document.createElement('div');stats.id='stats';uiEl.appendChild(stats);
+  WORLD_BUILDS.forEach(b=>{
+    const el=document.createElement('div');el.className='sBtn';
+    el.innerHTML=`<div class="n" style="color:${b.color}">${b.name}</div><div class="c">$${b.cost}</div><div class="d">${b.desc}</div>`;
+    el.dataset.id=b.id;
+    el.style.color=b.color;
+    el.onclick=()=>{
+      const lockMsg=buildLockReason(b);
+      if(buildMode===b.id){buildMode=null}
+      else if(lockMsg){flash(`${b.name} — ${lockMsg}`,'#f66',1800)}
+      else if(worldGold>=b.cost){buildMode=b.id;flash(`Click on map to place ${b.name} · click button to cancel`,'#fc6',2000)}
+      else{flash(`Not enough gold ($${b.cost})`,'#f66',1400)}
+      updateWorldUI();
+    };
+    uiEl.appendChild(el);worldBtnEls.push(el);
+  });
+  // Satellite Scan ability — reveals fog/forest globally for 10s
+  const scan=document.createElement('div');scan.className='sBtn';scan.id='scanBtn';
+  scan.innerHTML=`<div class="n" style="color:#5cf">📡 Satellite Scan</div><div class="c">$${SCAN_COST}</div><div class="d">10s reveal · 15s cooldown</div>`;
+  scan.onclick=()=>{
+    if(scanActive>0){flash(`Scan already active (${Math.ceil(scanActive/60)}s left)`,'#9cf',1400);return}
+    if(scanCool>0){flash(`Scan recharging (${Math.ceil(scanCool/60)}s)`,'#f66',1400);return}
+    if(worldGold<SCAN_COST){flash(`Not enough gold ($${SCAN_COST})`,'#f66',1400);return}
+    worldGold-=SCAN_COST;scanActive=SCAN_TIME;scanCool=SCAN_COOLDOWN;
+    flash(`📡 Satellite scan online — fog cleared`,'#9cf',2000);
+    updateWorldUI();
+  };
+  uiEl.appendChild(scan);
+  // Airstrike — click to arm, click on map to designate. 3s flight delay then AOE strike.
+  const air=document.createElement('div');air.className='sBtn';air.id='airBtn';
+  air.innerHTML=`<div class="n" style="color:#fa6">✈ Airstrike</div><div class="c">$${AIRSTRIKE_COST}</div><div class="d">3s delay · AOE · 15s cd</div>`;
+  air.onclick=()=>{
+    if(airstrikeArmed){airstrikeArmed=false;flash(`Airstrike disarmed`,'#aaa',1000);updateWorldUI();return}
+    if(airstrikeCool>0){flash(`Airstrike rearming (${Math.ceil(airstrikeCool/60)}s)`,'#f66',1400);return}
+    if(worldGold<AIRSTRIKE_COST){flash(`Not enough gold ($${AIRSTRIKE_COST})`,'#f66',1400);return}
+    airstrikeArmed=true;buildMode=null;
+    flash(`✈ Click on map to designate strike target`,'#fa6',2000);
+    updateWorldUI();
+  };
+  uiEl.appendChild(air);
+  const cancel=document.createElement('div');cancel.className='sBtn';
+  cancel.innerHTML=`<div class="n" style="color:#aaa">Cancel</div><div class="d">deselect</div>`;
+  cancel.onclick=()=>{buildMode=null;updateWorldUI()};
+  uiEl.appendChild(cancel);
+  updateWorldUI();
+}
+function buildLockReason(b){
+  if(b.unlockDay&&worldDay<b.unlockDay)return `unlocks on day ${b.unlockDay}`;
+  if(b.unlockCheck==='chinaThreat'){
+    const cn=WORLD_CITIES.find(c=>c.id==='china');
+    if(cn&&cn.status==='safe')return `unlocks when China is under threat`;
+  }
+  return null;
+}
+function updateWorldUI(){
+  worldBtnEls.forEach(el=>{
+    const b=WORLD_BUILDS.find(x=>x.id===el.dataset.id);
+    const lockMsg=buildLockReason(b);
+    el.classList.toggle('cant',worldGold<b.cost||!!lockMsg);
+    el.classList.toggle('sel',buildMode===b.id);
+    el.title=lockMsg||'';
+  });
+  const stats=document.getElementById('stats');
+  if(stats){
+    const cn=worldStructures.filter(s=>s.type==='cannon').length;
+    const fb=worldStructures.filter(s=>s.type==='fob').length;
+    const dv=worldStructures.filter(s=>{const d=WORLD_BUILDS.find(b=>b.id===s.type);return d&&d.mobile}).length;
+    const def=Object.values(defenses).filter(d=>!d.result).length;
+    const scanStatus=scanActive>0?`<div style="color:#5cf">📡 SCAN ${Math.ceil(scanActive/60)}s</div>`:scanCool>0?`<div style="color:#888">📡 cd ${Math.ceil(scanCool/60)}s</div>`:'';
+    const airBtn=document.getElementById('airBtn');
+    if(airBtn){
+      airBtn.classList.toggle('cant',worldGold<AIRSTRIKE_COST||airstrikeCool>0);
+      airBtn.classList.toggle('sel',airstrikeArmed);
+    }
+    const airStatus=airstrikeArmed?`<div style="color:#fa6">✈ ARMED</div>`:airstrikeCool>0?`<div style="color:#888">✈ cd ${Math.ceil(airstrikeCool/60)}s</div>`:'';
+    stats.innerHTML=`<div style="color:#ffd700">💰 World: ${worldGold}</div><div style="color:#fc6">🎯 ${cn} · 🏠 ${fb} · 👥 ${dv}</div><div style="color:#9cf">⚔ Defenses: ${def}</div>${scanStatus}${airStatus}<div style="color:#888">${airstrikeArmed?'Click map to strike':buildMode?'Click map to place':'Pick a build →'}</div>`;
+  }
+}
+
+// ── INPUT ────────────────────────────────────────────────────────────────
+const keys={};let mouseDown=false;
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;
+  if(wDragging){
+    const dx=e.clientX-wDS.x,dy=e.clientY-wDS.y;
+    wCam.x=wDC.x-dx/wCam.zoom;wCam.y=wDC.y-dy/wCam.zoom;
+    wCam.x=Math.max(0,Math.min(MAP_W,wCam.x));wCam.y=Math.max(0,Math.min(MAP_H,wCam.y));
+  }
+});
+let wDragging=false,wDS=null,wDC=null,wDM=false;
+canvas.addEventListener('mousedown',e=>{
+  if(screen==='worldmap'){wDragging=true;wDS={x:e.clientX,y:e.clientY};wDC={x:wCam.x,y:wCam.y};wDM=false}
+  else if(screen==='citydefense')mouseDown=true;
+});
+canvas.addEventListener('mouseup',e=>{
+  if(wDragging){const dx=e.clientX-wDS.x,dy=e.clientY-wDS.y;wDM=Math.hypot(dx,dy)>5;wDragging=false}
+  mouseDown=false;
+});
+canvas.addEventListener('click',e=>{
+  if(dlgEl.classList.contains('show'))return;
+  const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(screen==='intro'){introFade=0;introStep++;if(introStep>=INTRO.length){introStep=0;screen='worldmap';topbar.classList.add('show');buildWorldUI();uiEl.classList.add('show')}return}
+  if(screen==='worldmap'){
+    if(wDM)return;
+    if(airstrikeArmed){
+      const wx=(mx-canvas.width/2)/wCam.zoom+wCam.x;
+      const wy=(my-canvas.height/2)/wCam.zoom+wCam.y;
+      if(worldGold<AIRSTRIKE_COST){flash(`Not enough gold ($${AIRSTRIKE_COST})`,'#f66',1400);airstrikeArmed=false;updateWorldUI();return}
+      worldGold-=AIRSTRIKE_COST;
+      pendingAirstrikes.push({x:wx,y:wy,timer:AIRSTRIKE_DELAY});
+      airstrikeArmed=false;airstrikeCool=AIRSTRIKE_COOLDOWN;
+      flash(`✈ Strike inbound — 3s`,'#fa6',1400);
+      updateWorldUI();
+      return;
+    }
+    if(buildMode){
+      const def=WORLD_BUILDS.find(b=>b.id===buildMode);
+      if(def&&worldGold>=def.cost){
+        const wx=(mx-canvas.width/2)/wCam.zoom+wCam.x;
+        const wy=(my-canvas.height/2)/wCam.zoom+wCam.y;
+        if(!def.air&&!isLand(wx,wy)){flash(`Ground units can't deploy in the ocean`,'#f66',1400);return}
+        // Mobile divisions cannot be deployed too close to the ORIGINAL pandemic zones.
+        // City-fall pandemic zones (those with a cityId) have no restriction.
+        if(def.mobile){
+          for(const z of PANDEMIC_ZONES){
+            if((z.hp||0)<=0)continue;
+            if(z.cityId)continue;
+            if(Math.hypot(wx-z.x,wy-z.y)<NO_SPAWN_R){
+              flash(`Too close to ${z.name} — pull back further`,'#f66',1800);return;
+            }
+          }
+        }
+        worldStructures.push({type:buildMode,x:wx,y:wy,cooldown:0,hp:def.hp||0,maxHp:def.hp||0,state:'idle'});
+        worldGold-=def.cost;
+        flash(`✓ ${def.name} deployed`,'#4f4',1200);
+      }else{flash(`Not enough gold ($${def.cost})`,'#f66',1200)}
+      return;
+    }
+    // City defense scene is disabled, but clicking a threatened (or warned/attacked/fallen)
+    // country opens the strategic dialog so the player can evacuate, scorch, or seal.
+    for(const c of WORLD_CITIES){
+      const sp=wm2s(c.x,c.y);
+      if(Math.hypot(sp.x-mx,sp.y-my)<18&&CITY_DEF[c.id]){
+        if(c.status==='warned'||c.status==='attacked'||(c.status==='fallen'&&(c.fallTimer||0)>0)){
+          openCityDialog(c.id);return;
+        }
+      }
+    }
+    return;
+  }
+  if(screen==='result')exitDefenseAfterResult();
+});
+canvas.addEventListener('wheel',e=>{if(screen!=='worldmap')return;e.preventDefault();const f=e.deltaY>0?.9:1.11;wCam.zoom=Math.max(.3,Math.min(2,wCam.zoom*f))},{passive:false});
+
+// ── HORDES ──────────────────────────────────────────────────────────────
+// Mutations: 'normal', 'runner' (fast/fragile), 'brute' (slow/tanky)
+const MUTATIONS={
+  normal:{hpMul:1,   spdMul:1,   sizeMul:1,   countMul:1,   color:'#3a6b2a',headColor:'#6fae4a',label:''},
+  runner:{hpMul:.4,  spdMul:2.2, sizeMul:.7,  countMul:.7,  color:'#7a5a1a',headColor:'#e8b84a',label:'RUNNER'},
+  brute :{hpMul:3.0, spdMul:.55, sizeMul:1.5, countMul:.6,  color:'#3a1a1a',headColor:'#a02828',label:'BRUTE'},
+  alpha :{hpMul:30,  spdMul:.55, sizeMul:1,   countMul:1,   color:'#1a0606',headColor:'#7a0a0a',label:'ALPHA'},
+};
+function rollMutation(){
+  if(worldDay<15)return 'normal'; // mutations only start after day 15
+  const r=Math.random();
+  if(r<.18)return 'runner';
+  if(r<.30)return 'brute';
+  return 'normal';
+}
+function makeHorde(x,y,sz,target,mutation){
+  const mut=MUTATIONS[mutation]||MUTATIONS.normal;
+  const hp=(80+sz*60)*mut.hpMul;
+  const count=Math.max(6,Math.round((14+sz*9)*mut.countMul));
+  const members=[];
+  for(let i=0;i<count;i++){
+    members.push({
+      ox:(Math.random()-.5)*(8+sz*3)*mut.sizeMul,
+      oy:(Math.random()-.5)*(8+sz*3)*mut.sizeMul,
+      ph:Math.random()*Math.PI*2,
+      sp:.85+Math.random()*.3
+    });
+  }
+  hordes.push({
+    x,y,target,speed:(.16+Math.random()*.08)*mut.spdMul,size:sz,hp,maxHp:hp,
+    arrived:false,age:0,members,mutation:mutation||'normal'
+  });
+  if(target&&target.status==='safe')target.status='warned';
+}
+function pickHordeTarget(fromX,fromY){
+  // Any city that isn't already saved/sealed/scorched/pandemic is a valid target.
+  // (Previously this required 'safe', which exhausted quickly once cities were warned.)
+  const valid=c=>CITY_DEF[c.id]&&(c.status==='safe'||c.status==='saved'||c.status==='warned'||c.status==='attacked'||c.status==='fallen');
+  let targets=WORLD_CITIES.filter(valid);
+  if(!targets.length)return null;
+  targets.sort((a,b)=>Math.hypot(a.x-fromX,a.y-fromY)-Math.hypot(b.x-fromX,b.y-fromY));
+  return targets[Math.floor(Math.random()*Math.min(3,targets.length))];
+}
+function spawnHorde(){
+  const origins=WORLD_CITIES.filter(c=>c.status==='fallen'||c.status==='attacked');
+  if(!origins.length)return;
+  const origin=origins[Math.floor(Math.random()*origins.length)];
+  const target=pickHordeTarget(origin.x,origin.y);
+  if(!target)return;
+  // Spawn a swarm: 2–4 hordes at once near the origin, each pointed at a nearby city
+  const swarm=2+Math.floor(Math.random()*3);
+  for(let i=0;i<swarm;i++){
+    const sx=origin.x+(Math.random()-.5)*70;
+    const sy=origin.y+(Math.random()-.5)*70;
+    const tgt=pickHordeTarget(sx,sy)||target;
+    const sz=2+Math.floor(Math.random()*3); // 2–4
+    makeHorde(sx,sy,sz,tgt,rollMutation());
+  }
+}
+
+function updateHordes(){
+  hordes.forEach(h=>{
+    h.age++;
+    // Barbed wire: slow + bleed hordes inside any wire radius.
+    const wireDef=WORLD_BUILDS.find(b=>b.id==='wire');
+    const cpDef=WORLD_BUILDS.find(b=>b.id==='checkpoint');
+    let slowFactor=1;
+    for(const w of worldStructures){
+      if(w.type==='wire'){
+        if(Math.hypot(h.x-w.x,h.y-w.y)<wireDef.radius){
+          slowFactor=Math.min(slowFactor,wireDef.slow);
+          h.hp-=wireDef.dmg;
+        }
+      }else if(w.type==='checkpoint'){
+        const dx=h.x-w.x,dy=h.y-w.y,d=Math.hypot(dx,dy);
+        if(d<cpDef.radius){
+          slowFactor=Math.min(slowFactor,cpDef.slow);
+          h.hp-=cpDef.dmg;
+          // If horde tries to walk through the gate, push it sideways to reroute
+          if(d<cpDef.blockR){
+            const nd=d||1;
+            const px=dx/nd,py=dy/nd;
+            h.x+=px*.6;h.y+=py*.6;
+          }
+        }
+      }
+    }
+    h._slow=slowFactor;
+    // Find the nearest mobile division (or destructible Forward Base) within engagement range.
+    // Arrived hordes use a wider sense range — they chew anything that comes close to the city.
+    const senseR=h.arrived?70:55;
+    let block=null,bd=Infinity;
+    for(const s of worldStructures){
+      const def=WORLD_BUILDS.find(b=>b.id===s.type);
+      if(!def)continue;
+      const attackable=def.mobile||s.type==='fob';
+      if(!attackable||(s.hp||0)<=0)continue;
+      if(fogBlocks(h.x,h.y,s.x,s.y))continue;
+      const ddx=s.x-h.x,ddy=s.y-h.y,dd=Math.hypot(ddx,ddy);
+      if(dd<senseR&&dd<bd){bd=dd;block=s}
+    }
+    if(block){
+      const bdx=block.x-h.x,bdy=block.y-h.y,bdd=Math.hypot(bdx,bdy)||1;
+      if(bdd<14){
+        // In melee: chew the division. Bigger hordes bite harder.
+        block.hp-=.18*(h.size||1);
+      }else if(!h.arrived){
+        // Travelers divert toward the threat in their path.
+        h.x+=bdx/bdd*h.speed*h._slow;h.y+=bdy/bdd*h.speed*h._slow;
+      }else{
+        // Arrived hordes lurch out from the city to swat the closest division.
+        h.x+=bdx/bdd*h.speed*.6*h._slow;h.y+=bdy/bdd*h.speed*.6*h._slow;
+      }
+      return;
+    }
+    if(h.arrived)return;
+    const dx=h.target.x-h.x,dy=h.target.y-h.y,d=Math.hypot(dx,dy);
+    if(d<8){
+      h.arrived=true;
+      if(h.target.status!=='fallen'&&h.target.status!=='saved')h.target.status='attacked';
+    }else{
+      h.x+=dx/d*h.speed*h._slow;h.y+=dy/d*h.speed*h._slow;
+    }
+  });
+  hordes=hordes.filter(h=>{
+    if(h.hp<=0)return false;
+    if(!h.arrived)return true;
+    // Arrived hordes stick at the city forever once they've taken it.
+    // They only despawn when the city is reclaimed (saved), scorched/sealed (eradicated), or deserted (zone cleared).
+    const t=h.target;
+    if(!t)return h.age<400;
+    if(t.status==='saved'||t.status==='scorched'||t.status==='sealed'||t.status==='deserted')return false;
+    return true;
+  });
+  // If a city was under siege (attacked/fallen) and all hordes targeting it
+  // are wiped out before it turns into a pandemic zone, it's saved — and can
+  // be attacked again later.
+  WORLD_CITIES.forEach(c=>{
+    if(c.status!=='attacked'&&c.status!=='warned'&&c.status!=='fallen')return;
+    if(defenses[c.id]&&!defenses[c.id].result)return; // active player defense
+    const stillTargeted=hordes.some(h=>h.target===c&&h.hp>0);
+    if(stillTargeted)return;
+    c.status='safe';
+    c.attackedTimer=0;
+    c.fallTimer=0;
+    flash(`✓ ${c.name} cleared — hordes destroyed`,'#4f4',1400);
+  });
+}
+
+// ── WORLD STRUCTURES (cannons, FOBs, divisions) ────────────────────────
+function updateWorldStructures(){
+  worldStructures.forEach(s=>{
+    const def=WORLD_BUILDS.find(b=>b.id===s.type);if(!def)return;
+    if(def.mobile){
+      // Fog/forest blinds the unit's targeting (mutual blindness; player still sees everything).
+      let target=null,minD=Infinity;
+      for(const h of hordes){
+        if(h.hp<=0)continue;
+        if(fogBlocks(s.x,s.y,h.x,h.y))continue;
+        const d=Math.hypot(h.x-s.x,h.y-s.y);
+        if(d<minD){minD=d;target=h}
+      }
+      // Transport: when a horde is in trigger range, deploy by splitting into Rifle Divs and despawn.
+      if(def.splitInto&&target&&minD<def.splitTrigger&&worldPrepTimer<=0){
+        const childDef=WORLD_BUILDS.find(b=>b.id===def.splitInto);
+        if(childDef){
+          for(let i=0;i<def.splitCount;i++){
+            const a=(i/def.splitCount)*Math.PI*2;
+            worldStructures.push({type:def.splitInto,x:s.x+Math.cos(a)*8,y:s.y+Math.sin(a)*8,cooldown:0,hp:childDef.hp,maxHp:childDef.hp,state:'idle'});
+          }
+          s.hp=0;s._consumed=true;
+          flash(`🚚 Transport deployed — 2 Rifle Divs in field`,'#9b6',1200);
+          return;
+        }
+      }
+      // All mobile units seek out pandemic zones when no horde threat is closer.
+      // Pandemic zones are the fog source itself, so they're targetable from outside fog.
+      // A unit standing inside pandemic fog can't shoot at all (sourceInPF blocks targeting).
+      const sourceInPF=inPandemicFogAt(s.x,s.y);
+      let zoneTarget=null;
+      let zd=Infinity;
+      for(const z of PANDEMIC_ZONES){
+        if((z.hp||0)<=0)continue;
+        if(!def.air&&!isLand(z.x,z.y))continue;
+        if(sourceInPF&&sourceInPF!==z)continue;
+        const d=Math.hypot(z.x-s.x,z.y-s.y);
+        if(d<zd){zd=d;zoneTarget=z}
+      }
+      if(sourceInPF){target=null;minD=Infinity}
+      // Prefer the closer of (nearest horde) vs (nearest zone). Hordes win ties so units defend first.
+      if(zoneTarget&&(!target||zd<minD))target=zoneTarget;
+      s.target=target;
+      s.cooldown=(s.cooldown||0)-1;
+      s.flash=Math.max(0,(s.flash||0)-1);
+      if(target){
+        const dx=target.x-s.x,dy=target.y-s.y,d=Math.hypot(dx,dy)||1;
+        const moveSpd=def.spd*(inForestAt(s.x,s.y)?.5:1);
+        const tryMove=(nx,ny)=>{if(worldPrepTimer>0)return false;if(def.air||isLand(nx,ny)){s.x=nx;s.y=ny;return true}return false};
+        if(d<def.retreat){
+          s.state='retreat';
+          tryMove(s.x-dx/d*moveSpd,s.y-dy/d*moveSpd);
+        }else if(d<def.range){
+          s.state='engage';
+          if(s.cooldown<=0&&worldPrepTimer<=0){
+            if(def.aoe){
+              for(const h2 of hordes){
+                if(h2.hp<=0)continue;
+                if(Math.hypot(h2.x-target.x,h2.y-target.y)<def.aoe)h2.hp-=def.dmg;
+              }
+              // AOE splash damages any pandemic zone in range
+              for(const z of PANDEMIC_ZONES){
+                if((z.hp||0)<=0)continue;
+                if(Math.hypot(z.x-target.x,z.y-target.y)<def.aoe)z.hp-=def.dmg;
+              }
+            }else{
+              if(target===zoneTarget)target.hp-=def.dmg;
+              else target.hp-=def.dmg;
+            }
+            s.cooldown=def.rate;s.flash=8;
+          }
+        }else{
+          s.state='approach';
+          if(!tryMove(s.x+dx/d*moveSpd,s.y+dy/d*moveSpd)){
+            // Try sliding along axes to follow coastline
+            if(!tryMove(s.x+dx/d*moveSpd,s.y))tryMove(s.x,s.y+dy/d*moveSpd);
+          }
+        }
+        if(d<22&&!def.air&&target!==zoneTarget)s.hp-=.15*(target.size||1);
+      }else{s.state='idle'}
+    }else if(s.type==='cannon'){
+      s.cooldown=(s.cooldown||0)-1;
+      let target=null,minD=Infinity;
+      for(const h of hordes){
+        if(h.hp<=0)continue;
+        if(fogBlocks(s.x,s.y,h.x,h.y))continue;
+        const d=Math.hypot(h.x-s.x,h.y-s.y);
+        if(d<def.range&&d<minD){minD=d;target=h}
+      }
+      s.target=target;
+      if(target&&s.cooldown<=0&&worldPrepTimer<=0){target.hp-=def.dmg;s.cooldown=def.rate;s.flash=8}
+      s.flash=Math.max(0,(s.flash||0)-1);
+    }
+  });
+  // Field hospitals: heal nearby divisions (passive aura)
+  const hospitalDef=WORLD_BUILDS.find(b=>b.id==='hospital');
+  worldStructures.forEach(h=>{
+    if(h.type!=='hospital')return;
+    worldStructures.forEach(s=>{
+      const def=WORLD_BUILDS.find(b=>b.id===s.type);
+      if(!def||!def.mobile||(s.hp||0)<=0||s.hp>=def.hp)return;
+      if(Math.hypot(s.x-h.x,s.y-h.y)<hospitalDef.radius){
+        s.hp=Math.min(def.hp,s.hp+hospitalDef.heal);
+      }
+    });
+  });
+  worldStructures=worldStructures.filter(s=>{
+    const def=WORLD_BUILDS.find(b=>b.id===s.type);
+    if(!def)return true;
+    // Forward Bases are destructible too — remove with a flash, no reanimation.
+    if(s.type==='fob'){
+      if((s.hp||0)>0)return true;
+      flash(`✗ Forward Base destroyed`,'#f44',2000);
+      return false;
+    }
+    if(!def.mobile)return true;
+    if(s.hp>0)return true;
+    // Transport that consumed itself by splitting — silent despawn.
+    if(s._consumed)return false;
+    // Mechs can't be infected — they leave a wreck and vanish without reanimating.
+    if(def.noInfect){
+      if(viewedDefId==null)flash(`✚ ${def.name} destroyed — wreck recovered`,'#9cf',1800);
+      return false;
+    }
+    // Division killed → may turn into a horde of zombified troops.
+    // A nearby field hospital halves the reanimation chance (50%).
+    const inHospital=worldStructures.some(h2=>h2.type==='hospital'&&Math.hypot(h2.x-s.x,h2.y-s.y)<hospitalDef.radius);
+    const reanimate=inHospital?Math.random()<.5:true;
+    if(reanimate){
+      const sz=def.id==='tank-div'?3:def.id==='bomber'?3:def.id==='apc-div'?3:def.id==='gatling-div'?2:def.id==='rpg-div'?2:def.id==='mg-div'?2:def.id==='ak-plane'?2:def.id==='pyro'?2:def.id==='sniper-div'?1:def.id==='fav-div'?1:def.id==='ar-div'?2:def.id==='transport'?3:2;
+      const tgt=pickHordeTarget(s.x,s.y);
+      if(tgt)makeHorde(s.x,s.y,sz,tgt);
+      if(viewedDefId==null)flash(`☠ ${def.name} overrun — turned!`,'#f44',1800);
+    }else{
+      if(viewedDefId==null)flash(`✚ ${def.name} KIA — body recovered`,'#9cf',1800);
+    }
+    return false;
+  });
+}
+
+// ── ATTACKED-CITY FALL TIMER ─────────────────────────────────────────────
+const CITY_FALL_TIME=1500; // ~25s
+const FALLEN_DECAY=1800;   // ~30s before a fallen city becomes a pandemic zone
+function cityFell(id,cause){
+  const c=WORLD_CITIES.find(x=>x.id===id);if(!c||c.status==='pandemic'||c.status==='scorched'||c.status==='sealed')return;
+  c.status='fallen';c.attackedTimer=0;c.fallTimer=FALLEN_DECAY;
+  if(defenses[id])delete defenses[id];
+  // If the player is currently watching this city's defense, show the choice dialog now.
+  if(viewedDefId===id){
+    screen='result';
+    showFallenChoiceDialog(id);
+  }else{
+    flash(`✗ ${c.name} fallen — choose response from map`,'#f44',2800);
+  }
+}
+function updateAttackedCities(){
+  WORLD_CITIES.forEach(c=>{
+    // Evacuation tick
+    if(c.evacuating&&!c.evacuated){
+      c.evacTimer=(c.evacTimer||0)-1;
+      if(c.evacTimer<=0){
+        c.evacuating=false;c.evacuated=true;
+        flash(`✓ ${c.name} civilians evacuated`,'#9cf',2400);
+      }
+    }
+    if(c.status==='attacked'){
+      const beingDefended=defenses[c.id]&&!defenses[c.id].result;
+      if(!beingDefended&&!worldPrepTimer){
+        c.attackedTimer=(c.attackedTimer||0)+1;
+        if(c.attackedTimer>=CITY_FALL_TIME){cityFell(c.id,'undefended')}
+      }
+    }else if(c.status==='fallen'){
+      // Tick toward pandemic. Pause if troops are currently fighting to retake (defense active).
+      const beingDefended=defenses[c.id]&&!defenses[c.id].result;
+      if(!beingDefended){
+        c.fallTimer=(c.fallTimer||FALLEN_DECAY)-1;
+        if(c.fallTimer<=0){
+          if(c.evacuated){
+            c.status='deserted';c.fallTimer=0;
+            flash(`☐ ${c.name} abandoned — no civilians to infect`,'#9cf',3200);
+          }else{
+            c.status='pandemic';
+            PANDEMIC_ZONES.push({x:c.x,y:c.y,name:c.name+' Outbreak',spawnTimer:60,pulse:0,hp:ZONE_HP,maxHp:ZONE_HP,cityId:c.id});
+            flash(`☣ ${c.name} is now a PANDEMIC ZONE`,'#f44',3200);
+          }
+        }
+      }
+    }else if(c.status==='sealed'){
+      // Seal is temporary — when it breaks the contained outbreak erupts as a pandemic zone.
+      c.sealTimer=(c.sealTimer||0)-1;
+      if(c.sealTimer<=0){
+        c.status='pandemic';c.sealTimer=0;
+        PANDEMIC_ZONES.push({x:c.x,y:c.y,name:c.name+' Outbreak',spawnTimer:60,pulse:0,hp:ZONE_HP,maxHp:ZONE_HP,cityId:c.id});
+        flash(`☣ Seal broke — ${c.name} is now a PANDEMIC ZONE`,'#f44',3200);
+      }
+    }else{c.attackedTimer=0}
+  });
+}
+
+function showFallenChoiceDialog(id){
+  const wc=WORLD_CITIES.find(c=>c.id===id),def=CITY_DEF[id];
+  if(!wc||!def)return;
+  const sec=Math.ceil((wc.fallTimer||FALLEN_DECAY)/60);
+  showDialog('CITY LOST',`${def.name}, ${def.country}`,
+    `${def.name} has fallen.\nWithout action it becomes a pandemic zone in ~${sec}s.\n\nChoose your response:`,
+    [
+      {label:'☢ SCORCHED EARTH ($400)',danger:true,onClick:()=>chooseScorched(id)},
+      {label:'🚫 SEAL OFF — 20s ($200)',onClick:()=>chooseSeal(id)},
+      {label:'DO NOTHING',danger:true,onClick:()=>{hideDialog();if(screen==='result')returnToMap()}}
+    ]);
+}
+function retakeFallen(id){
+  const wc=WORLD_CITIES.find(c=>c.id===id);if(!wc)return;
+  wc.status='attacked';wc.fallTimer=0;wc.attackedTimer=0;
+  hideDialog();enterCity(id);
+}
+function chooseScorched(id){
+  if(worldGold<400){flash('Need $400 world gold','#f66',1500);return}
+  worldGold-=400;
+  const wc=WORLD_CITIES.find(c=>c.id===id);if(!wc)return;
+  wc.status='scorched';wc.fallTimer=0;
+  flash(`☢ ${CITY_DEF[id].country} scorched`,'#f80',2400);
+  hideDialog();if(screen==='result')returnToMap();
+}
+const SEAL_TIME=1200; // 20s of containment, then the seal breaks
+function chooseSeal(id){
+  if(worldGold<200){flash('Need $200 world gold','#f66',1500);return}
+  worldGold-=200;
+  const wc=WORLD_CITIES.find(c=>c.id===id);if(!wc)return;
+  wc.status='sealed';wc.fallTimer=0;wc.sealTimer=SEAL_TIME;
+  flash(`🚫 ${CITY_DEF[id].name} sealed off — 20s`,'#fa4',2200);
+  hideDialog();if(screen==='result')returnToMap();
+}
+
+// ── WORLD UPDATE LOOP ────────────────────────────────────────────────────
+function updateWorldMap(){
+  worldTimer++;
+  if(worldTimer%240===0)worldDay++;
+  if(worldPrepTimer>0)worldPrepTimer--;
+  if(scanActive>0)scanActive--;
+  else if(scanCool>0)scanCool--;
+  if(airstrikeCool>0)airstrikeCool--;
+  // Tick pending airstrikes — when timer hits 0, deal AOE to hordes & pandemic zones.
+  for(let i=pendingAirstrikes.length-1;i>=0;i--){
+    const a=pendingAirstrikes[i];
+    a.timer--;
+    if(a.timer<=0){
+      for(const h of hordes){
+        if(h.hp<=0)continue;
+        if(Math.hypot(h.x-a.x,h.y-a.y)<AIRSTRIKE_AOE)h.hp-=AIRSTRIKE_DMG;
+      }
+      for(const z of PANDEMIC_ZONES){
+        if((z.hp||0)<=0)continue;
+        if(Math.hypot(z.x-a.x,z.y-a.y)<AIRSTRIKE_AOE)z.hp-=AIRSTRIKE_DMG;
+      }
+      a.flash=20;
+      // Hold a brief explosion frame, then remove.
+      if(a.flash<=0)pendingAirstrikes.splice(i,1);
+    }
+    if(a.timer<=-25)pendingAirstrikes.splice(i,1);
+  }
+  // 5 seconds before prep ends → D42 and Area 51 fire their opening 5-horde salvo each.
+  if(worldPrepTimer===300){
+    PANDEMIC_ZONES.forEach(z=>{
+      if((z.openingBurst||0)<=0||(z.hp||0)<=0)return;
+      for(let i=0;i<z.openingBurst;i++){
+        const tgt=pickHordeTarget(z.x,z.y);
+        if(tgt){
+          const sz=2+Math.floor(Math.random()*3);
+          makeHorde(z.x+(Math.random()-.5)*120,z.y+(Math.random()-.5)*120,sz,tgt,rollMutation());
+        }
+      }
+      flash(`⚠ ${z.name} unleashed an opening swarm`,'#f66',2400);
+      z.openingBurst=0;
+    });
+  }
+  worldGoldTick++;
+  if(worldGoldTick>=60){
+    let inc=2;worldStructures.forEach(s=>{if(s.type==='fob')inc+=10});
+    worldGold+=inc;worldGoldTick=0;
+  }
+  if(worldPrepTimer<=0){
+    hordeSpawnTimer--;
+    if(hordeSpawnTimer<=0){spawnHorde();hordeSpawnTimer=Math.max(45,180-worldDay*3)}
+    // Pandemic zones pour out hordes endlessly (until destroyed). Each zone has its own flavor.
+    PANDEMIC_ZONES.forEach(z=>{
+      z.pulse=(z.pulse||0)+1;
+      if((z.hp||0)<=0)return;
+      // Area 51: an Alpha Zombie surfaces on day 40, then once every 25 days thereafter.
+      // Only one Alpha alive at a time; if the active one dies, the next won't appear
+      // until the next 25-day window.
+      if(z.kind==='alpha'){
+        const alphaAlive=hordes.some(h=>h===z.alphaRef&&h.hp>0);
+        const eligible=worldDay>=40 && (z.lastAlphaDay==null || worldDay>=z.lastAlphaDay+25);
+        if(!alphaAlive&&eligible){
+          const tgt=pickHordeTarget(z.x,z.y);
+          if(tgt){
+            makeHorde(z.x,z.y,4,tgt,'alpha');
+            z.alphaRef=hordes[hordes.length-1];
+            z.lastAlphaDay=worldDay;
+            flash(`☠ ALPHA ZOMBIE emerged from ${z.name}`,'#f44',2800);
+          }
+        }
+      }
+      z.spawnTimer--;
+      if(z.spawnTimer<=0){
+        if(z.kind==='mass'){
+          // D42: spits out 2–3 hordes per pulse
+          const burst=2+Math.floor(Math.random()*2);
+          for(let i=0;i<burst;i++){
+            const tgt=pickHordeTarget(z.x,z.y);
+            if(tgt){
+              const sz=2+Math.floor(Math.random()*3);
+              makeHorde(z.x+(Math.random()-.5)*90,z.y+(Math.random()-.5)*90,sz,tgt,rollMutation());
+            }
+          }
+          z.spawnTimer=110+Math.floor(Math.random()*60);
+        }else if(z.kind==='spread'){
+          // Banda Sea: rapid bursts, far island reach
+          const tgt=pickHordeTarget(z.x,z.y);
+          if(tgt){
+            const sz=2+Math.floor(Math.random()*3);
+            makeHorde(z.x+(Math.random()-.5)*180,z.y+(Math.random()-.5)*180,sz,tgt,rollMutation());
+          }
+          z.spawnTimer=45+Math.floor(Math.random()*30);
+        }else if(z.kind==='alpha'){
+          // Area 51: heavy mutations — bias toward runner/brute
+          const tgt=pickHordeTarget(z.x,z.y);
+          if(tgt){
+            const sz=2+Math.floor(Math.random()*3);
+            const r=Math.random();
+            const mut=worldDay<15?'normal':(r<.5?'brute':r<.85?'runner':'normal');
+            makeHorde(z.x+(Math.random()-.5)*70,z.y+(Math.random()-.5)*70,sz,tgt,mut);
+          }
+          z.spawnTimer=90+Math.floor(Math.random()*50);
+        }else{
+          const tgt=pickHordeTarget(z.x,z.y);
+          if(tgt){
+            const sz=2+Math.floor(Math.random()*3);
+            makeHorde(z.x+(Math.random()-.5)*70,z.y+(Math.random()-.5)*70,sz,tgt,rollMutation());
+          }
+          z.spawnTimer=80+Math.floor(Math.random()*60);
+        }
+      }
+    });
+  }
+  // ── TOXIC GAS BURSTS (after day 50) ──
+  if(worldDay>=GAS_FIRST_DAY&&worldPrepTimer<=0){
+    gasSpawnTimer--;
+    if(gasSpawnTimer<=0){
+      // Pick a random land position, avoiding pandemic zones and existing gas
+      let tries=0,gx=0,gy=0,ok=false;
+      while(tries++<40){
+        gx=200+Math.random()*(MAP_W-400);
+        gy=200+Math.random()*(MAP_H-400);
+        if(!isLand(gx,gy))continue;
+        let near=false;
+        for(const z of PANDEMIC_ZONES)if(Math.hypot(gx-z.x,gy-z.y)<180){near=true;break}
+        for(const g of GAS_ZONES)if(Math.hypot(gx-g.x,gy-g.y)<150){near=true;break}
+        if(!near){ok=true;break}
+      }
+      if(ok){
+        GAS_ZONES.push({x:gx,y:gy,age:0,r:55+Math.random()*25,deployTimer:0});
+        flash(`☢ TOXIC GAS DETECTED — incoming swarm in 10s`,'#ff8',2500);
+      }
+      gasSpawnTimer=GAS_INTERVAL;
+    }
+  }
+  // Tick gas zones
+  for(let i=GAS_ZONES.length-1;i>=0;i--){
+    const g=GAS_ZONES[i];
+    g.age++;
+    if(g.age>=GAS_WARN_TIME){
+      g.deployTimer--;
+      if(g.deployTimer<=0){
+        const tgt=pickHordeTarget(g.x,g.y);
+        if(tgt){
+          const sz=1+Math.floor(Math.random()*2);
+          makeHorde(g.x+(Math.random()-.5)*g.r,g.y+(Math.random()-.5)*g.r,sz,tgt,rollMutation());
+        }
+        g.deployTimer=70+Math.floor(Math.random()*50); // ~1.2–2s between spawns
+      }
+    }
+    if(g.age>=GAS_LIFE)GAS_ZONES.splice(i,1);
+  }
+  // Remove destroyed zones and mark their associated city as deserted (immune to re-infection)
+  for(let i=PANDEMIC_ZONES.length-1;i>=0;i--){
+    const z=PANDEMIC_ZONES[i];
+    if((z.hp||0)<=0){
+      if(z.cityId){
+        const c=WORLD_CITIES.find(x=>x.id===z.cityId);
+        if(c){c.status='deserted';c.attackedTimer=0;c.fallTimer=0;c.sealTimer=0}
+      }
+      flash(`✓ ${z.name} cleared — area deserted`,'#4f4',2400);
+      PANDEMIC_ZONES.splice(i,1);
+    }
+  }
+  updateHordes();
+  updateWorldStructures();
+  updateAttackedCities();
+}
+
+// ── DEFENSE SIM (per-city) ──────────────────────────────────────────────
+function startWaveS(s){
+  s.wave++;s.betweenWaves=false;
+  const count=4+s.wave*2;s.spawnQueue=[];
+  for(let i=0;i<count;i++){
+    const isBoss=(i===count-1)&&s.wave>=3;
+    const sp=s.def.spawns[Math.floor(Math.random()*s.def.spawns.length)];
+    s.spawnQueue.push({
+      delay:i*60+Math.random()*30,
+      hp:(isBoss?420:35+s.wave*12)*s.def.diff,
+      spd:(isBoss?.45:.6+Math.random()*.3)*(1+s.wave*.04),
+      boss:isBoss,spawn:sp
+    });
+  }
+  if(s.id===viewedDefId)flash(`⚠ WAVE ${s.wave} — ${s.def.name}`,'#f44',2000);
+}
+function spawnZombieS(s,d){
+  const px=tilePxFor(s,d.spawn.col,d.spawn.row);
+  s.zombies.push({
+    x:px.x+(Math.random()-.5)*16,y:px.y+(Math.random()-.5)*16,
+    col:d.spawn.col,row:d.spawn.row,
+    hp:d.hp,maxHp:d.hp,spd:d.spd,boss:d.boss,
+    path:[],pathTimer:0
+  });
+}
+function flash(text,color,dur){
+  waveMsgEl.textContent=text;waveMsgEl.style.color=color;waveMsgEl.style.display='block';
+  clearTimeout(flash._t);flash._t=setTimeout(()=>waveMsgEl.style.display='none',dur||2000);
+}
+function particleS(s,x,y,color){
+  const a=Math.random()*Math.PI*2,sp=.4+Math.random()*.9;
+  s.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:25+Math.random()*15,max:40,color});
+}
+function stepAlongPath(u,sp,s){
+  if(!u.path||u.path.length===0)return false;
+  const next=u.path[0],npx=tilePxFor(s,next.col,next.row);
+  const dx=npx.x-u.x,dy=npx.y-u.y,d=Math.hypot(dx,dy);
+  if(d<sp+1){u.x=npx.x;u.y=npx.y;u.col=next.col;u.row=next.row;u.path.shift();return true}
+  u.x+=dx/d*sp;u.y+=dy/d*sp;
+  return false;
+}
+function ensurePath(u,tc,tr){
+  if(u.col===tc&&u.row===tr){u.path=[];return}
+  if(u.pathTC!==tc||u.pathTR!==tr||u.pathTimer<=0||u.path.length===0){
+    u.pathTC=tc;u.pathTR=tr;u.path=bfs(u.col,u.row,tc,tr)||[];u.pathTimer=45+Math.floor(Math.random()*15);
+  }
+}
+function updateSoldierS(s,u){
+  u.pathTimer--;
+  let target=null,minD=Infinity;
+  for(const z of s.zombies){const d=Math.hypot(z.x-u.x,z.y-u.y);if(d<minD){minD=d;target=z}}
+  if(!target){
+    u.state='idle';
+    const dHQ=Math.hypot(u.x-s.hqpx.x,u.y-s.hqpx.y);
+    if(dHQ>TILE*1.5)ensurePath(u,s.hq.col,s.hq.row);else u.path=[];
+  }else{
+    if(minD<u.type.retreat){u.state='retreat';ensurePath(u,s.hq.col,s.hq.row)}
+    else if(minD<u.type.range){
+      u.state='engage';u.path=[];u.fireTimer++;
+      if(u.fireTimer>=u.type.rate){u.fireTimer=0;s.bullets.push({x:u.x,y:u.y,target,spd:6,dmg:u.type.dmg,color:u.type.color,aoe:u.type.aoe||0})}
+    }else{
+      u.state='approach';ensurePath(u,target.col,target.row);
+    }
+  }
+  if(u.state==='approach'||u.state==='retreat'||u.state==='idle')stepAlongPath(u,u.type.spd,s);
+  if(target&&u.state==='approach'&&minD<u.type.range){
+    u.fireTimer++;
+    if(u.fireTimer>=u.type.rate){u.fireTimer=0;s.bullets.push({x:u.x,y:u.y,target,spd:6,dmg:u.type.dmg,color:u.type.color,aoe:u.type.aoe||0})}
+  }
+}
+function updatePlayer(s){
+  const p=s.player;if(!p)return;
+  if(p.respawn>0){
+    p.respawn--;
+    if(p.respawn<=0){p.x=s.hqpx.x;p.y=s.hqpx.y+24;p.hp=p.maxHp}
+    return;
+  }
+  // Movement (only if currently viewed defense — keyboard input only steers viewed)
+  if(s.id===viewedDefId){
+    let mx=0,my=0;
+    if(keys['w']||keys['arrowup'])my-=1;
+    if(keys['s']||keys['arrowdown'])my+=1;
+    if(keys['a']||keys['arrowleft'])mx-=1;
+    if(keys['d']||keys['arrowright'])mx+=1;
+    const len=Math.hypot(mx,my);
+    if(len>0){
+      const sp=2.2;p.x+=mx/len*sp;p.y+=my/len*sp;
+      // Aim follows movement direction; idle = keep last aim
+      p.aim=Math.atan2(my,mx);
+    }
+  }
+  // Constrain to map area
+  const minX=s.offset.x+8,maxX=s.offset.x+GRID_W*TILE-8;
+  const minY=s.offset.y+8,maxY=s.offset.y+GRID_H*TILE-8;
+  if(p.x<minX)p.x=minX;if(p.x>maxX)p.x=maxX;
+  if(p.y<minY)p.y=minY;if(p.y>maxY)p.y=maxY;
+  // Damage from nearby zombies
+  for(const z of s.zombies){
+    if(Math.hypot(z.x-p.x,z.y-p.y)<18)p.hp-=.22*(z.boss?2.5:1);
+  }
+  // Shoot
+  p.fireTimer--;
+  const w=WEAPONS.find(x=>x.id===p.weapon);
+  if(w&&s.id===viewedDefId&&(mouseDown||keys['e'])&&p.fireTimer<=0){
+    p.fireTimer=w.rate;
+    s.pBullets.push({
+      x:p.x+Math.cos(p.aim)*10,y:p.y+Math.sin(p.aim)*10,
+      vx:Math.cos(p.aim)*w.spd,vy:Math.sin(p.aim)*w.spd,
+      dmg:w.dmg,life:Math.ceil(w.range/w.spd),aoe:w.aoe||0,color:w.color
+    });
+    // Muzzle flash particle
+    for(let i=0;i<3;i++)particleS(s,p.x+Math.cos(p.aim)*12,p.y+Math.sin(p.aim)*12,w.color);
+  }
+  if(p.hp<=0){
+    for(let i=0;i<14;i++)particleS(s,p.x,p.y,'#f44');
+    p.respawn=300; // ~5s
+    if(s.id===viewedDefId)flash('☠ You died — respawning…','#f66',2000);
+  }
+}
+function updatePlayerBullets(s){
+  s.pBullets=s.pBullets.filter(b=>{
+    b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0)return false;
+    for(const z of s.zombies){
+      if(Math.hypot(z.x-b.x,z.y-b.y)<(b.aoe>0?10:12)){
+        if(b.aoe>0){
+          s.zombies.forEach(zz=>{if(Math.hypot(zz.x-b.x,zz.y-b.y)<b.aoe)zz.hp-=b.dmg});
+          for(let i=0;i<14;i++)particleS(s,b.x,b.y,'#f8a');
+        }else{
+          z.hp-=b.dmg;
+          for(let i=0;i<3;i++)particleS(s,z.x,z.y,b.color);
+        }
+        return false;
+      }
+    }
+    return true;
+  });
+}
+function updateZombieS(s,z){
+  z.pathTimer--;
+  ensurePath(z,s.hq.col,s.hq.row);
+  stepAlongPath(z,z.spd,s);
+  for(const u of s.soldiers){if(Math.hypot(u.x-z.x,u.y-z.y)<22)u.hp-=.18*(z.boss?2.5:1)}
+  if(Math.hypot(z.x-s.hqpx.x,z.y-s.hqpx.y)<TILE*.7){
+    z.escaped=true;s.lives--;
+    for(let i=0;i<5;i++)particleS(s,s.hqpx.x,s.hqpx.y,'#f44');
+  }
+}
+function updateOneDefense(s){
+  if(s.result)return;
+  s.waveTimer++;s.goldTick++;
+  if(s.goldTick>=120){s.gold+=18+s.wave*3;s.goldTick=0}
+  if(s.prepActive){
+    // Only count down prep once a horde has actually arrived at this city
+    const wc=WORLD_CITIES.find(c=>c.id===s.id);
+    const hordeHere=wc&&wc.status==='attacked';
+    s.awaitingHorde=!hordeHere;
+    if(hordeHere){
+      s.nextWaveDelay--;
+      if(s.nextWaveDelay<=0){s.prepActive=false;s.betweenWaves=true;s.nextWaveDelay=120}
+    }
+  }else{
+    s.spawnQueue.forEach(q=>q.delay--);
+    s.spawnQueue.filter(q=>q.delay<=0).forEach(q=>spawnZombieS(s,q));
+    s.spawnQueue=s.spawnQueue.filter(q=>q.delay>0);
+  }
+  s.zombies.forEach(z=>updateZombieS(s,z));
+  s.zombies=s.zombies.filter(z=>!z.escaped);
+  s.soldiers.forEach(u=>updateSoldierS(s,u));
+  updatePlayer(s);
+  updatePlayerBullets(s);
+  s.bullets=s.bullets.filter(b=>{
+    if(!b.target||b.target.hp<=0)return false;
+    const dx=b.target.x-b.x,dy=b.target.y-b.y,d=Math.hypot(dx,dy);
+    if(d<b.spd+2){
+      if(b.aoe>0){
+        s.zombies.forEach(z=>{if(Math.hypot(z.x-b.target.x,z.y-b.target.y)<b.aoe){z.hp-=b.dmg;particleS(s,z.x,z.y,'#c6f')}});
+        for(let i=0;i<10;i++)particleS(s,b.target.x,b.target.y,'#f8a');
+      }else{
+        b.target.hp-=b.dmg;
+        for(let i=0;i<3;i++)particleS(s,b.target.x,b.target.y,b.color);
+      }
+      return false;
+    }
+    b.x+=dx/d*b.spd;b.y+=dy/d*b.spd;return true;
+  });
+  s.zombies=s.zombies.filter(z=>{if(z.hp<=0){s.gold+=z.boss?80:8+s.wave;for(let i=0;i<6;i++)particleS(s,z.x,z.y,'#3f3');return false}return true});
+  s.soldiers=s.soldiers.filter(u=>{if(u.hp<=0){for(let i=0;i<10;i++)particleS(s,u.x,u.y,'#f44');return false}return true});
+  s.particles.forEach(p=>{p.life--;p.x+=p.vx;p.y+=p.vy});
+  s.particles=s.particles.filter(p=>p.life>0);
+  if(s.lives<=0){s.lives=0;s.result='lose';const wc=WORLD_CITIES.find(c=>c.id===s.id);if(wc)wc.status='fallen';onDefenseEnd(s);return}
+  if(!s.prepActive){
+    const allDone=s.zombies.length===0&&s.spawnQueue.length===0;
+    if(!s.betweenWaves&&allDone){s.betweenWaves=true;s.nextWaveDelay=420;if(s.wave<s.maxWaves&&s.id===viewedDefId)flash(`✓ Wave ${s.wave} cleared — ${s.def.name}`,'#4f4',1500)}
+    if(s.betweenWaves&&allDone){
+      s.nextWaveDelay--;
+      if(s.nextWaveDelay<=0){
+        if(s.wave>=s.maxWaves){s.result='win';const wc=WORLD_CITIES.find(c=>c.id===s.id);if(wc)wc.status='saved';onDefenseEnd(s);return}
+        startWaveS(s);
+      }
+    }
+  }
+}
+
+function onDefenseEnd(s){
+  const w=s.result==='win';
+  if(w){
+    if(s.id===viewedDefId){
+      screen='result';
+      showDialog('CITY SAVED',`${s.def.name}, ${s.def.country}`,
+        'Your forces held the line.\nThe survivors have been evacuated.',
+        [{label:'RETURN TO MAP',onClick:exitDefenseAfterResult}]);
+    }else{
+      flash(`✓ ${s.def.name} SAVED`,'#4f4',2400);
+      delete defenses[s.id];
+    }
+  }else{
+    // Lost — go through fallen-city flow (presents 3 choices)
+    cityFell(s.id,'overrun');
+  }
+}
+
+function updateAllDefenses(){
+  Object.values(defenses).forEach(updateOneDefense);
+}
+
+// ── DRAWING ──────────────────────────────────────────────────────────────
+function wm2s(x,y){return{x:(x-wCam.x)*wCam.zoom+canvas.width/2,y:(y-wCam.y)*wCam.zoom+canvas.height/2}}
+function drawContinents(){
+  CONTINENTS.forEach(c=>{
+    ctx.beginPath();const p0=wm2s(c.p[0].x,c.p[0].y);ctx.moveTo(p0.x,p0.y);
+    c.p.slice(1).forEach(p=>{const s=wm2s(p.x,p.y);ctx.lineTo(s.x,s.y)});
+    ctx.closePath();ctx.fillStyle=c.c;ctx.fill();ctx.strokeStyle=c.b;ctx.lineWidth=1;ctx.stroke();
+  });
+}
+
+function drawIntro(){
+  ctx.fillStyle='#020502';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();ctx.globalAlpha=.08;
+  const z=wCam.zoom,x=wCam.x,y=wCam.y;wCam.zoom=.3;wCam.x=MAP_W/2;wCam.y=MAP_H/2;drawContinents();
+  wCam.zoom=z;wCam.x=x;wCam.y=y;ctx.restore();
+  introFade=Math.min(1,introFade+.018);
+  ctx.save();ctx.globalAlpha=introFade;
+  const sl=INTRO[introStep];
+  if(introStep===0){
+    ctx.fillStyle='#fff';ctx.font='bold 78px Georgia';ctx.textAlign='center';
+    ctx.fillText(sl.t,canvas.width/2,canvas.height/2-40);
+    ctx.fillStyle='#a33';ctx.font='italic 22px Georgia';ctx.fillText(sl.b,canvas.width/2,canvas.height/2+20);
+  }else{
+    ctx.fillStyle='#c33';ctx.font='bold 46px Georgia';ctx.textAlign='center';
+    ctx.fillText(sl.t,canvas.width/2,canvas.height/2-110);
+    if(sl.s){ctx.fillStyle='#999';ctx.font='italic 17px Georgia';ctx.fillText(sl.s,canvas.width/2,canvas.height/2-75)}
+    ctx.fillStyle='#ddd';ctx.font='19px Georgia';
+    sl.b.split('\n').forEach((l,i)=>ctx.fillText(l,canvas.width/2,canvas.height/2+0+i*30));
+  }
+  if(introFade>.85){
+    const p=(Math.sin(Date.now()/600)+1)/2;
+    ctx.fillStyle=`rgba(160,160,160,${.4+p*.4})`;ctx.font='15px Georgia';ctx.textAlign='center';
+    ctx.fillText(introStep<INTRO.length-1?'[ click to continue ]':'[ click to begin ]',canvas.width/2,canvas.height-60);
+  }
+  ctx.restore();
+}
+
+function drawWorldMap(){
+  ctx.fillStyle='#0a1e30';ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawContinents();
+  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
+  for(let lo=-180;lo<=180;lo+=30){const sx=wm2s(ll(lo,0).x,0).x;ctx.beginPath();ctx.moveTo(sx,40);ctx.lineTo(sx,canvas.height);ctx.stroke()}
+  for(let la=-60;la<=60;la+=30){const sy=wm2s(0,ll(0,la).y).y;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(canvas.width,sy);ctx.stroke()}
+
+  const t=Date.now()/1000;
+
+  // Forests — dark green canopy regions. Slow troops; hide hordes from troops at range.
+  FOREST_ZONES.forEach(f=>{
+    const sp=wm2s(f.x,f.y);
+    const r=f.r*wCam.zoom;
+    const grd=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r);
+    grd.addColorStop(0,'rgba(40,95,55,.55)');
+    grd.addColorStop(.7,'rgba(28,72,42,.42)');
+    grd.addColorStop(1,'rgba(20,50,30,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(20,55,30,.85)';
+    for(const tr of f.trees){
+      const tx=sp.x+Math.cos(tr.a)*tr.rr*r,ty=sp.y+Math.sin(tr.a)*tr.rr*r;
+      ctx.beginPath();ctx.arc(tx,ty,tr.sz*Math.max(.6,wCam.zoom*.9),0,Math.PI*2);ctx.fill();
+    }
+    ctx.fillStyle='rgba(170,210,170,.55)';
+    ctx.font=`bold ${Math.max(9,11*wCam.zoom)}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('🌲 '+f.name,sp.x,sp.y-r*.55);
+  });
+
+  // Toxic gas zones — yellow warning, then green deployment cloud spilling zombies
+  GAS_ZONES.forEach(g=>{
+    const sp=wm2s(g.x,g.y);
+    const r=g.r*wCam.zoom;
+    const warning=g.age<GAS_WARN_TIME;
+    const pulse=(Math.sin(t*4)+1)/2;
+    if(warning){
+      // pulsing yellow warning ring with countdown
+      const sec=Math.ceil((GAS_WARN_TIME-g.age)/60);
+      ctx.fillStyle=`rgba(255,235,80,${.10+pulse*.10})`;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=`rgba(255,220,80,${.5+pulse*.4})`;ctx.lineWidth=2;ctx.setLineDash([8,5]);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      // hazard symbol + countdown
+      ctx.fillStyle='#ffeb55';
+      ctx.font=`bold ${Math.max(11,13*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+      ctx.fillText('☢ INCOMING',sp.x,sp.y-4);
+      ctx.fillText(`${sec}s`,sp.x,sp.y+12);
+    }else{
+      // active green/yellow toxic cloud
+      const grd=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r);
+      grd.addColorStop(0,`rgba(160,220,80,${.55+pulse*.10})`);
+      grd.addColorStop(.6,`rgba(120,180,60,.40)`);
+      grd.addColorStop(1,'rgba(80,120,40,0)');
+      ctx.fillStyle=grd;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=`rgba(180,255,90,${.6+pulse*.3})`;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.stroke();
+      // swirling toxic dots
+      for(let i=0;i<8;i++){
+        const a=t*1.2+i*Math.PI/4;
+        const rr=r*(.4+.4*Math.sin(t+i));
+        ctx.fillStyle='rgba(190,255,100,.7)';
+        ctx.beginPath();ctx.arc(sp.x+Math.cos(a)*rr,sp.y+Math.sin(a)*rr,2.4,0,Math.PI*2);ctx.fill();
+      }
+      ctx.fillStyle='#dfff80';
+      ctx.font=`bold ${Math.max(10,12*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+      ctx.fillText('☣ TOXIC',sp.x,sp.y-r-4);
+    }
+  });
+
+  // Pandemic fog — gray-green haze around each active pandemic zone (blinds units, hides troops)
+  PANDEMIC_ZONES.forEach(z=>{
+    if((z.hp||0)<=0)return;
+    const sp=wm2s(z.x,z.y);
+    const fr=PANDEMIC_FOG_R*wCam.zoom;
+    const fg=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,fr);
+    const drift=(Math.sin(t*.7)+1)*.5;
+    fg.addColorStop(0,`rgba(160,170,150,${.32+drift*.08})`);
+    fg.addColorStop(.6,`rgba(140,150,135,${.22+drift*.06})`);
+    fg.addColorStop(1,'rgba(120,130,115,0)');
+    ctx.fillStyle=fg;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,fr,0,Math.PI*2);ctx.fill();
+  });
+
+  // Evacuation routes — animated dashed lines from evacuating cities to the nearest safe haven
+  WORLD_CITIES.forEach(c=>{
+    if(!c.evacuating&&!c.evacuated)return;
+    // Find nearest safe-ish destination (safe/saved/scorched/sealed/deserted/evacuated)
+    let dest=null,bestD=Infinity;
+    for(const d of WORLD_CITIES){
+      if(d===c)continue;
+      if(d.status!=='safe'&&d.status!=='saved'&&d.status!=='scorched'&&d.status!=='sealed'&&d.status!=='deserted'&&!d.evacuated)continue;
+      const dd=Math.hypot(d.x-c.x,d.y-c.y);
+      if(dd<bestD){bestD=dd;dest=d}
+    }
+    if(!dest)return;
+    const a=wm2s(c.x,c.y),b=wm2s(dest.x,dest.y);
+    // animated dash flow
+    const phase=(t*30)%14;
+    ctx.save();
+    ctx.setLineDash([7,7]);ctx.lineDashOffset=-phase;
+    ctx.strokeStyle=c.evacuated?'rgba(140,220,255,.45)':'rgba(160,220,255,.85)';
+    ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+    ctx.restore();
+    // arrow head at destination
+    const ang=Math.atan2(b.y-a.y,b.x-a.x);
+    ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ang);
+    ctx.fillStyle=c.evacuated?'rgba(140,220,255,.6)':'rgba(160,220,255,.95)';
+    ctx.beginPath();ctx.moveTo(-10,-5);ctx.lineTo(0,0);ctx.lineTo(-10,5);ctx.closePath();ctx.fill();
+    ctx.restore();
+    // moving civilian dots along the line
+    if(c.evacuating){
+      const segs=4;
+      for(let i=0;i<segs;i++){
+        const f=((t*.25+i/segs)%1);
+        const px=a.x+(b.x-a.x)*f,py=a.y+(b.y-a.y)*f;
+        ctx.fillStyle='rgba(220,240,255,.9)';
+        ctx.beginPath();ctx.arc(px,py,2.2,0,Math.PI*2);ctx.fill();
+      }
+      // progress label near origin
+      const sec=Math.ceil((c.evacTimer||0)/60);
+      ctx.fillStyle='#9cf';ctx.font=`bold ${Math.max(9,10*wCam.zoom)}px Courier New`;ctx.textAlign='left';
+      ctx.fillText(`▲ EVAC ${sec}s`,a.x+10,a.y-10);
+    }else if(c.evacuated){
+      ctx.fillStyle='#9cf';ctx.font=`bold ${Math.max(9,10*wCam.zoom)}px Courier New`;ctx.textAlign='left';
+      ctx.fillText('▲ EVACUATED',a.x+10,a.y-10);
+    }
+  });
+
+  // Deployment overlay — red exclusion rings around the ORIGINAL pandemic zones only
+  // (city-fall zones don't restrict deployment).
+  if(buildMode){
+    const placingDef=WORLD_BUILDS.find(b=>b.id===buildMode);
+    if(placingDef&&placingDef.mobile){
+      ctx.save();
+      PANDEMIC_ZONES.forEach(z=>{
+        if((z.hp||0)<=0)return;
+        if(z.cityId)return;
+        const sp=wm2s(z.x,z.y);
+        const r=NO_SPAWN_R*wCam.zoom;
+        ctx.fillStyle='rgba(220,60,60,.10)';
+        ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='rgba(255,80,80,.7)';ctx.lineWidth=1.5;ctx.setLineDash([6,5]);
+        ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='rgba(255,120,120,.85)';
+        ctx.font=`bold ${Math.max(9,11*wCam.zoom)}px Courier New`;
+        ctx.textAlign='center';
+        ctx.fillText('⊘ NO DEPLOY',sp.x,sp.y-r-4);
+      });
+      ctx.restore();
+    }
+  }
+
+  // Pandemic zones — pulsing biohazard rings
+  PANDEMIC_ZONES.forEach(z=>{
+    const sp=wm2s(z.x,z.y);
+    const pulse=(Math.sin(t*2)+1)/2;
+    const baseR=Math.max(20,40*wCam.zoom);
+    // outer aura
+    for(let i=3;i>=1;i--){
+      ctx.beginPath();ctx.arc(sp.x,sp.y,baseR*(1+i*.4)+pulse*8,0,Math.PI*2);
+      ctx.fillStyle=`rgba(180,30,30,${.06*i+pulse*.04})`;ctx.fill();
+    }
+    // ring
+    ctx.beginPath();ctx.arc(sp.x,sp.y,baseR+pulse*5,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(255,80,80,${.6+pulse*.3})`;ctx.lineWidth=2;ctx.stroke();
+    // biohazard symbol
+    ctx.save();ctx.translate(sp.x,sp.y);
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(0,0,baseR*.35,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#f44';
+    for(let i=0;i<3;i++){
+      ctx.save();ctx.rotate(i*Math.PI*2/3);
+      ctx.beginPath();ctx.arc(0,-baseR*.18,baseR*.18,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(0,0,baseR*.08,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+    // label
+    ctx.fillStyle='#f88';ctx.font=`bold ${Math.max(9,11*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+    ctx.fillText(z.name.toUpperCase(),sp.x,sp.y+baseR+14);
+    // HP bar
+    if(z.maxHp){
+      const bw=Math.max(40,baseR*1.2),bh=5,bx=sp.x-bw/2,by=sp.y-baseR-12;
+      ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(bx-1,by-1,bw+2,bh+2);
+      const pct=Math.max(0,z.hp/z.maxHp);
+      ctx.fillStyle=pct>.5?'#4f4':pct>.25?'#fa4':'#f44';
+      ctx.fillRect(bx,by,bw*pct,bh);
+      ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(bx,by,bw,bh);
+      ctx.fillStyle='#fff';ctx.font=`${Math.max(7,8*wCam.zoom)}px 'Courier New'`;
+      ctx.fillText(`${Math.ceil(z.hp)}/${z.maxHp}`,sp.x,by-2);
+    }
+  });
+
+  // Horde trails
+  hordes.forEach(h=>{
+    if(h.arrived)return;
+    const sp=wm2s(h.x,h.y),tp=wm2s(h.target.x,h.target.y);
+    ctx.setLineDash([4,6]);ctx.strokeStyle='rgba(180,40,40,.35)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(sp.x,sp.y);ctx.lineTo(tp.x,tp.y);ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Hordes
+  hordes.forEach(h=>{
+    if(h.hp<=0)return;
+    // Hordes inside pandemic fog are hidden from the player (revealed only by satellite scan).
+    if(inPandemicFogAt(h.x,h.y)&&scanActive<=0)return;
+    const sp=wm2s(h.x,h.y);
+    const scale=Math.max(.7,wCam.zoom*.9);
+    const dx=h.target.x-h.x,dy=h.target.y-h.y,dd=Math.hypot(dx,dy)||1;
+    const ang=Math.atan2(dy,dx);
+    const mut=MUTATIONS[h.mutation]||MUTATIONS.normal;
+    // ALPHA — single oversized zombie that fills a horde's footprint
+    if(h.mutation==='alpha'){
+      const r=(20+h.size*3)*scale;
+      // shadow
+      ctx.beginPath();ctx.ellipse(sp.x,sp.y+r*.4,r*1.4,r*.6,0,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,.55)';ctx.fill();
+      const bob=Math.abs(Math.sin(t*1.3))*2;
+      // body
+      ctx.fillStyle=mut.color;
+      ctx.fillRect(sp.x-r*.8,sp.y-r*.4-bob,r*1.6,r*1.4);
+      ctx.strokeStyle='#400';ctx.lineWidth=2;ctx.strokeRect(sp.x-r*.8,sp.y-r*.4-bob,r*1.6,r*1.4);
+      // head
+      ctx.beginPath();ctx.arc(sp.x,sp.y-r*.7-bob,r*.55,0,Math.PI*2);
+      ctx.fillStyle=mut.headColor;ctx.fill();
+      ctx.strokeStyle='#400';ctx.stroke();
+      // eyes — glowing red
+      const eyeP=(Math.sin(t*5)+1)/2;
+      ctx.fillStyle=`rgba(255,${30+eyeP*60},${30+eyeP*30},1)`;
+      ctx.beginPath();ctx.arc(sp.x-r*.22,sp.y-r*.78-bob,r*.13,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(sp.x+r*.22,sp.y-r*.78-bob,r*.13,0,Math.PI*2);ctx.fill();
+      // claws / arms hint
+      ctx.strokeStyle='#600';ctx.lineWidth=Math.max(1.5,3*wCam.zoom);
+      ctx.beginPath();ctx.moveTo(sp.x-r*.7,sp.y);ctx.lineTo(sp.x-r*1.1,sp.y+r*.3);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(sp.x+r*.7,sp.y);ctx.lineTo(sp.x+r*1.1,sp.y+r*.3);ctx.stroke();
+      // ALPHA label + HP bar
+      ctx.fillStyle='#ff4040';
+      ctx.font=`bold ${Math.max(11,13*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+      ctx.fillText('☠ ALPHA ZOMBIE',sp.x,sp.y-r*1.3);
+      const bw=Math.max(40,r*2);
+      ctx.fillStyle='#400';ctx.fillRect(sp.x-bw/2,sp.y-r*1.15,bw,4);
+      ctx.fillStyle='#f44';ctx.fillRect(sp.x-bw/2,sp.y-r*1.15,bw*Math.max(0,h.hp/h.maxHp),4);
+      if(!h.arrived){
+        ctx.save();ctx.translate(sp.x,sp.y-r*1.4);ctx.rotate(ang);
+        ctx.fillStyle='rgba(255,80,80,.95)';
+        ctx.beginPath();ctx.moveTo(6,0);ctx.lineTo(-3,-4);ctx.lineTo(-3,4);ctx.closePath();ctx.fill();
+        ctx.restore();
+      }
+      return;
+    }
+    // Soft group shadow
+    const r=(6+h.size*3)*scale;
+    ctx.beginPath();ctx.ellipse(sp.x,sp.y+1,r*1.1,r*.55,0,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,.35)';ctx.fill();
+    // Draw individual zombies (sorted so back rows draw first)
+    const mScale=scale*(h.mutation==='brute'?1.4:h.mutation==='runner'?.85:1);
+    const mem=(h.members||[]).slice().sort((a,b)=>a.oy-b.oy);
+    for(const m of mem){
+      const sway=Math.sin(t*2*m.sp+m.ph)*1.2;
+      const bob=Math.abs(Math.sin(t*3*m.sp+m.ph))*1.1;
+      const px=sp.x+(m.ox*Math.cos(ang)-m.oy*Math.sin(ang))*scale+sway*scale*.4;
+      const py=sp.y+(m.ox*Math.sin(ang)+m.oy*Math.cos(ang))*scale*.55;
+      // shadow
+      ctx.beginPath();ctx.ellipse(px,py+2.2*mScale,2.4*mScale,1*mScale,0,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,.5)';ctx.fill();
+      // body
+      ctx.fillStyle=mut.color;
+      ctx.fillRect(px-1.4*mScale,py-2*mScale-bob*mScale,2.8*mScale,3*mScale);
+      // head
+      ctx.beginPath();ctx.arc(px,py-3.4*mScale-bob*mScale,1.5*mScale,0,Math.PI*2);
+      ctx.fillStyle=mut.headColor;ctx.fill();
+      // eye glints — runners get yellow eyes, brutes get angry red
+      ctx.fillStyle=h.mutation==='runner'?'#ffeb3b':'#ff4040';
+      ctx.fillRect(px-.9*mScale,py-3.6*mScale-bob*mScale,.5*mScale,.5*mScale);
+      ctx.fillRect(px+.4*mScale,py-3.6*mScale-bob*mScale,.5*mScale,.5*mScale);
+    }
+    // mutation label above the horde
+    if(mut.label&&!h.arrived){
+      ctx.fillStyle=h.mutation==='runner'?'#ffd866':'#ff7878';
+      ctx.font=`bold ${Math.max(8,9*wCam.zoom)}px Courier New`;
+      ctx.textAlign='center';
+      ctx.fillText(mut.label,sp.x,sp.y-r-12);
+    }
+    if(!h.arrived){
+      ctx.save();ctx.translate(sp.x,sp.y-r-2);ctx.rotate(ang);
+      ctx.fillStyle='rgba(255,80,80,.85)';
+      ctx.beginPath();ctx.moveTo(4,0);ctx.lineTo(-2,-2.5);ctx.lineTo(-2,2.5);ctx.closePath();ctx.fill();
+      ctx.restore();
+    }
+    if(h.hp<h.maxHp&&!h.arrived){
+      const bw=18;
+      ctx.fillStyle='#400';ctx.fillRect(sp.x-bw/2,sp.y-r-6,bw,2);
+      ctx.fillStyle='#4f4';ctx.fillRect(sp.x-bw/2,sp.y-r-6,bw*Math.max(0,h.hp/h.maxHp),2);
+    }
+  });
+
+  // Structures
+  worldStructures.forEach(s=>{
+    const def=WORLD_BUILDS.find(b=>b.id===s.type);if(!def)return;
+    // Mobile units in pandemic fog: barely visible (20% opacity) unless the satellite scan is up.
+    const fogged=def.mobile&&inPandemicFogAt(s.x,s.y)&&scanActive<=0;
+    if(fogged){ctx.save();ctx.globalAlpha=.2}
+    const sp=wm2s(s.x,s.y);
+    const r=Math.max(5,8*wCam.zoom);
+    if(s.type==='cannon'){
+      ctx.strokeStyle='rgba(255,200,80,.15)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,def.range*wCam.zoom,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle='#332';ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#fc6';ctx.lineWidth=2;ctx.stroke();
+      if(s.target){
+        const dx=s.target.x-s.x,dy=s.target.y-s.y,a=Math.atan2(dy,dx);
+        ctx.save();ctx.translate(sp.x,sp.y);ctx.rotate(a);
+        ctx.fillStyle=s.flash>0?'#fff':'#fc6';ctx.fillRect(0,-2,r+5,4);
+        ctx.restore();
+        if(s.flash>0){
+          const tp=wm2s(s.target.x,s.target.y);
+          ctx.strokeStyle='rgba(255,220,120,.7)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.moveTo(sp.x,sp.y);ctx.lineTo(tp.x,tp.y);ctx.stroke();
+        }
+      }
+    }else if(s.type==='fob'){
+      const tt=t,p=(Math.sin(tt*1.5)+1)/2;
+      ctx.strokeStyle=`rgba(120,170,255,${.1+p*.1})`;ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,def.radius*wCam.zoom,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle='#234';ctx.fillRect(sp.x-r,sp.y-r,r*2,r*2);
+      ctx.strokeStyle='#7af';ctx.lineWidth=2;ctx.strokeRect(sp.x-r,sp.y-r,r*2,r*2);
+      ctx.fillStyle='#7af';ctx.font=`bold ${Math.max(7,9*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+      ctx.fillText('+',sp.x,sp.y+3);
+      if((s.maxHp||0)>0&&s.hp<s.maxHp){
+        const bw=22;
+        ctx.fillStyle='#400';ctx.fillRect(sp.x-bw/2,sp.y+r+3,bw,2.5);
+        ctx.fillStyle='#7af';ctx.fillRect(sp.x-bw/2,sp.y+r+3,bw*Math.max(0,s.hp/s.maxHp),2.5);
+      }
+    }else if(s.type==='wire'){
+      // Barbed-wire field: spiked ring with fill, plus zigzag spokes for texture
+      const rad=def.radius*wCam.zoom;
+      ctx.fillStyle='rgba(180,180,180,.10)';ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='rgba(200,200,200,.55)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.stroke();
+      // little barbs around the perimeter
+      const barbs=12;
+      for(let i=0;i<barbs;i++){
+        const a=i/barbs*Math.PI*2;
+        const x1=sp.x+Math.cos(a)*rad,y1=sp.y+Math.sin(a)*rad;
+        const x2=sp.x+Math.cos(a)*(rad+3),y2=sp.y+Math.sin(a)*(rad+3);
+        ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+      }
+      // central post
+      ctx.fillStyle='#444';ctx.beginPath();ctx.arc(sp.x,sp.y,r*.5,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#bbb';ctx.lineWidth=1.5;ctx.stroke();
+    }else if(s.type==='hospital'){
+      // Field hospital: pulsing healing aura with red cross
+      const rad=def.radius*wCam.zoom,p=(Math.sin(t*1.2)+1)/2;
+      ctx.fillStyle=`rgba(80,200,255,${.06+p*.04})`;ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=`rgba(120,210,255,${.4+p*.3})`;ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.stroke();
+      // building base
+      ctx.fillStyle='#fff';ctx.fillRect(sp.x-r,sp.y-r,r*2,r*2);
+      ctx.strokeStyle='#4cf';ctx.lineWidth=2;ctx.strokeRect(sp.x-r,sp.y-r,r*2,r*2);
+      // red cross
+      ctx.fillStyle='#e44';
+      ctx.fillRect(sp.x-r*.25,sp.y-r*.7,r*.5,r*1.4);
+      ctx.fillRect(sp.x-r*.7,sp.y-r*.25,r*1.4,r*.5);
+    }else if(s.type==='checkpoint'){
+      // Checkpoint: yellow striped barricade with pivot bar
+      const rad=def.radius*wCam.zoom;
+      ctx.fillStyle='rgba(252,200,80,.08)';ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='rgba(252,200,80,.45)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      // gate post
+      ctx.fillStyle='#332';ctx.fillRect(sp.x-r*.35,sp.y-r*.6,r*.7,r*1.2);
+      ctx.strokeStyle='#fc4';ctx.lineWidth=1.5;ctx.strokeRect(sp.x-r*.35,sp.y-r*.6,r*.7,r*1.2);
+      // pivot bar (rotates with time)
+      ctx.save();ctx.translate(sp.x,sp.y);ctx.rotate(t*.6);
+      ctx.fillStyle='#fc4';ctx.fillRect(-r*1.5,-1.2,r*3,2.4);
+      ctx.fillStyle='#222';
+      for(let i=-2;i<=2;i++)ctx.fillRect(i*r*.5-1,-1.2,2,2.4);
+      ctx.restore();
+    }else if(def.mobile){
+      ctx.strokeStyle=def.color+'22';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,def.range*wCam.zoom,0,Math.PI*2);ctx.stroke();
+      if(def.air){
+        // Plane: shadow under, then triangular silhouette pointing toward target
+        ctx.fillStyle='rgba(0,0,0,.45)';ctx.beginPath();ctx.ellipse(sp.x,sp.y+r*.7,r*1.2,r*.45,0,0,Math.PI*2);ctx.fill();
+        const ang=s.target?Math.atan2(s.target.y-s.y,s.target.x-s.x):0;
+        ctx.save();ctx.translate(sp.x,sp.y);ctx.rotate(ang);
+        ctx.fillStyle=def.color;
+        ctx.beginPath();ctx.moveTo(r*1.4,0);ctx.lineTo(-r*.7,-r);ctx.lineTo(-r*.4,0);ctx.lineTo(-r*.7,r);ctx.closePath();ctx.fill();
+        ctx.fillRect(-r*.2,-r*1.1,r*.4,r*2.2); // wings
+        ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+        ctx.restore();
+      }else if(s.type==='mech'){
+        // Combat Mech — small silver hull with two MG barrels facing the target
+        const mr=r*.78;
+        const ang=s.target?Math.atan2(s.target.y-s.y,s.target.x-s.x):0;
+        ctx.save();ctx.translate(sp.x,sp.y);ctx.rotate(ang);
+        // legs hint
+        ctx.strokeStyle='#778';ctx.lineWidth=Math.max(1,1.6*wCam.zoom);
+        ctx.beginPath();ctx.moveTo(-mr*.6,mr*.7);ctx.lineTo(-mr*.9,mr*1.4);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(mr*.6,mr*.7);ctx.lineTo(mr*.9,mr*1.4);ctx.stroke();
+        // hull
+        ctx.fillStyle=def.color;ctx.fillRect(-mr,-mr*.7,mr*2,mr*1.4);
+        ctx.strokeStyle='#446';ctx.lineWidth=1.2;ctx.strokeRect(-mr,-mr*.7,mr*2,mr*1.4);
+        // two MG barrels
+        ctx.fillStyle=s.flash>0?'#fff':'#334';
+        ctx.fillRect(0,-mr*.55,mr*1.5,mr*.25);
+        ctx.fillRect(0,mr*.30,mr*1.5,mr*.25);
+        // cockpit dot
+        ctx.fillStyle='#9ef';
+        ctx.beginPath();ctx.arc(0,0,mr*.25,0,Math.PI*2);ctx.fill();
+        ctx.restore();
+      }else{
+        // Ground division — cluster of small soldier balls, each with a weapon silhouette.
+        // Overall footprint shrunk to ~50% of the old sprite.
+        const CFG={
+          'rifle-div':{n:4,weapon:'rifle'},
+          'ar-div':{n:3,weapon:'ar'},
+          'transport':{n:1,weapon:'truck'},
+          'fav-div':{n:1,weapon:'buggy'},
+          'sniper-div':{n:2,weapon:'sniper'},
+          'apc-div':{n:1,weapon:'apc'},
+          'mg-div':{n:3,weapon:'mg'},
+          'rpg-div':{n:2,weapon:'rpg'},
+          'gatling-div':{n:2,weapon:'gatling'},
+          'tank-div':{n:1,weapon:'cannon'},
+          'pyro':{n:3,weapon:'flame'},
+        }[s.type]||{n:3,weapon:'rifle'};
+        const ang=s.target?Math.atan2(s.target.y-s.y,s.target.x-s.x):0;
+        const cluster=r*.7;
+        const bigBall=CFG.weapon==='cannon'||CFG.weapon==='apc'||CFG.weapon==='truck'||CFG.weapon==='buggy';
+        const ballR=r*(bigBall?.9:.55);
+        for(let i=0;i<CFG.n;i++){
+          const a=(i/CFG.n)*Math.PI*2+s.x*.013+s.y*.017;
+          const px=CFG.n>1?sp.x+Math.cos(a)*cluster:sp.x;
+          const py=CFG.n>1?sp.y+Math.sin(a)*cluster:sp.y;
+          // shadow
+          ctx.fillStyle='rgba(0,0,0,.4)';
+          ctx.beginPath();ctx.ellipse(px,py+ballR*.55,ballR*.95,ballR*.4,0,0,Math.PI*2);ctx.fill();
+          // soldier ball — vehicles draw their own hull in the silhouette block.
+          const isVehicle=CFG.weapon==='apc'||CFG.weapon==='truck'||CFG.weapon==='buggy';
+          if(!isVehicle){
+            ctx.fillStyle=def.color;
+            ctx.beginPath();ctx.arc(px,py,ballR,0,Math.PI*2);ctx.fill();
+            ctx.strokeStyle='#111';ctx.lineWidth=1;ctx.stroke();
+          }
+          // weapon silhouette pointing toward target
+          ctx.save();ctx.translate(px,py);ctx.rotate(ang);
+          ctx.fillStyle='#111';
+          if(CFG.weapon==='rifle'){ctx.fillRect(0,-ballR*.12,ballR*1.7,ballR*.24)}
+          else if(CFG.weapon==='ar'){ctx.fillRect(0,-ballR*.13,ballR*1.5,ballR*.26);ctx.fillRect(-ballR*.2,-ballR*.32,ballR*.35,ballR*.20)}
+          else if(CFG.weapon==='sniper'){ctx.fillRect(0,-ballR*.10,ballR*2.6,ballR*.20)}
+          else if(CFG.weapon==='mg'){ctx.fillRect(0,-ballR*.18,ballR*1.9,ballR*.36);ctx.fillRect(ballR*1.9,-ballR*.05,ballR*.25,ballR*.10)}
+          else if(CFG.weapon==='gatling'){ctx.fillRect(0,-ballR*.22,ballR*1.7,ballR*.44);ctx.fillStyle='#666';ctx.beginPath();ctx.arc(ballR*1.7,0,ballR*.32,0,Math.PI*2);ctx.fill()}
+          else if(CFG.weapon==='cannon'){ctx.fillRect(0,-ballR*.18,ballR*2.0,ballR*.36)}
+          else if(CFG.weapon==='rpg'){ctx.fillRect(0,-ballR*.16,ballR*1.6,ballR*.32);ctx.fillStyle='#a44';ctx.beginPath();ctx.moveTo(ballR*1.6,-ballR*.22);ctx.lineTo(ballR*2.0,0);ctx.lineTo(ballR*1.6,ballR*.22);ctx.closePath();ctx.fill()}
+          else if(CFG.weapon==='apc'){
+            // boxy hull with turret
+            ctx.fillStyle=def.color;ctx.fillRect(-ballR*.9,-ballR*.7,ballR*1.8,ballR*1.4);
+            ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(-ballR*.9,-ballR*.7,ballR*1.8,ballR*1.4);
+            ctx.fillStyle='#111';ctx.fillRect(0,-ballR*.15,ballR*1.4,ballR*.30);
+          }
+          else if(CFG.weapon==='truck'){
+            // simple van body
+            ctx.fillStyle=def.color;ctx.fillRect(-ballR*.95,-ballR*.55,ballR*1.9,ballR*1.1);
+            ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(-ballR*.95,-ballR*.55,ballR*1.9,ballR*1.1);
+            ctx.fillStyle='#345';ctx.fillRect(ballR*.2,-ballR*.45,ballR*.7,ballR*.9); // cab window
+          }
+          else if(CFG.weapon==='buggy'){
+            // open-frame buggy with mounted gun
+            ctx.fillStyle=def.color;ctx.fillRect(-ballR*.7,-ballR*.45,ballR*1.4,ballR*.9);
+            ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(-ballR*.7,-ballR*.45,ballR*1.4,ballR*.9);
+            ctx.fillStyle='#111';ctx.fillRect(0,-ballR*.10,ballR*1.5,ballR*.20);
+          }
+          else if(CFG.weapon==='flame'){ctx.fillRect(0,-ballR*.14,ballR*1.4,ballR*.28);ctx.fillStyle='#f63';ctx.fillRect(ballR*1.4,-ballR*.16,ballR*.45,ballR*.32)}
+          ctx.restore();
+        }
+      }
+      const letter={'rifle-div':'R','ar-div':'AR','transport':'🚚','fav-div':'F','sniper-div':'S','apc-div':'V','mg-div':'M','rpg-div':'RPG','gatling-div':'G','tank-div':'T','ak-plane':'A','bomber':'B','pyro':'P','mech':''}[s.type]||'';
+      ctx.fillStyle=def.air?'#000':'#000';ctx.font=`bold ${Math.max(7,9*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+      ctx.fillText(letter,sp.x,sp.y+3);
+      if(s.flash>0&&s.target){
+        const tp=wm2s(s.target.x,s.target.y);
+        ctx.strokeStyle=def.color+'cc';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.moveTo(sp.x,sp.y);ctx.lineTo(tp.x,tp.y);ctx.stroke();
+      }
+      if(s.state==='retreat'){
+        ctx.fillStyle='#fa4';ctx.font=`bold ${Math.max(8,10*wCam.zoom)}px Courier New`;
+        ctx.fillText('!',sp.x,sp.y-r-5);
+      }
+      if(s.hp<s.maxHp){
+        const bw=18;
+        ctx.fillStyle='#400';ctx.fillRect(sp.x-bw/2,sp.y+r+3,bw,2);
+        ctx.fillStyle='#0f0';ctx.fillRect(sp.x-bw/2,sp.y+r+3,bw*Math.max(0,s.hp/s.maxHp),2);
+      }
+    }
+    if(fogged)ctx.restore();
+  });
+
+  // Airstrike markers — pulsing reticle + countdown, then explosion flash.
+  pendingAirstrikes.forEach(a=>{
+    const sp=wm2s(a.x,a.y);
+    const aoe=AIRSTRIKE_AOE*wCam.zoom;
+    if(a.timer>0){
+      const p=(Math.sin(t*8)+1)/2;
+      ctx.strokeStyle=`rgba(255,170,80,${.5+p*.5})`;ctx.lineWidth=2;
+      ctx.setLineDash([5,4]);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,aoe,0,Math.PI*2);ctx.stroke();
+      ctx.setLineDash([]);
+      // crosshair
+      ctx.beginPath();ctx.moveTo(sp.x-aoe,sp.y);ctx.lineTo(sp.x+aoe,sp.y);
+      ctx.moveTo(sp.x,sp.y-aoe);ctx.lineTo(sp.x,sp.y+aoe);ctx.stroke();
+      ctx.fillStyle='#fa6';ctx.font=`bold ${Math.max(11,14*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+      ctx.fillText(`✈ ${(a.timer/60).toFixed(1)}s`,sp.x,sp.y-aoe-6);
+    }else{
+      // Explosion flash
+      const k=Math.max(0,1+a.timer/25); // a.timer goes 0 → -25
+      ctx.fillStyle=`rgba(255,200,100,${k*.55})`;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,aoe*(1+(1-k)*.4),0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=`rgba(255,90,40,${k*.85})`;
+      ctx.beginPath();ctx.arc(sp.x,sp.y,aoe*.5,0,Math.PI*2);ctx.fill();
+    }
+  });
+  // Airstrike targeting reticle at cursor while armed
+  if(airstrikeArmed){
+    const aoe=AIRSTRIKE_AOE*wCam.zoom;
+    ctx.strokeStyle='rgba(255,170,80,.7)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.arc(mouseX,mouseY,aoe,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Cities
+  WORLD_CITIES.forEach(c=>{
+    const sp=wm2s(c.x,c.y);
+    const beingDefended=defenses[c.id]&&!defenses[c.id].result;
+    if(c.status==='attacked'){
+      const p=(Math.sin(t*3)+1)/2;
+      const r=(12+p*18)*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fillStyle=`rgba(220,40,40,${.2+p*.4})`;ctx.fill();
+    }else if(c.status==='warned'){
+      const p=(Math.sin(t*4)+1)/2;
+      const r=(10+p*12)*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fillStyle=`rgba(255,180,40,${.15+p*.25})`;ctx.fill();
+    }else if(c.status==='fallen'){
+      const p=(Math.sin(t*4)+1)/2;
+      const r=(14+p*4)*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fillStyle=`rgba(140,20,20,${.35+p*.2})`;ctx.fill();
+      ctx.strokeStyle='#c33';ctx.lineWidth=2;ctx.beginPath();
+      ctx.moveTo(sp.x-5,sp.y-5);ctx.lineTo(sp.x+5,sp.y+5);ctx.moveTo(sp.x+5,sp.y-5);ctx.lineTo(sp.x-5,sp.y+5);ctx.stroke();
+    }else if(c.status==='sealed'){
+      const r=12*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fillStyle='rgba(120,90,40,.45)';ctx.fill();
+      ctx.strokeStyle='#fa4';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+    }else if(c.status==='scorched'){
+      const r=14*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fillStyle='rgba(60,30,10,.7)';ctx.fill();
+      ctx.strokeStyle='#963';ctx.lineWidth=1.5;ctx.stroke();
+    }else if(c.status==='saved'){
+      const r=12*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fillStyle='rgba(60,200,60,.35)';ctx.fill();
+    }
+    if(beingDefended){
+      const p=(Math.sin(t*5)+1)/2;
+      const r=(16+p*6)*Math.max(.6,wCam.zoom);
+      ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(120,200,255,${.5+p*.3})`;ctx.lineWidth=2;ctx.stroke();
+    }
+    const dr=Math.max(3,5*wCam.zoom);
+    ctx.beginPath();ctx.arc(sp.x,sp.y,dr,0,Math.PI*2);
+    ctx.fillStyle=c.status==='fallen'?'#c33':c.status==='saved'?'#4f4':c.status==='attacked'?'#f44':c.status==='warned'?'#fa4':c.status==='sealed'?'#fa4':c.status==='scorched'?'#963':c.status==='pandemic'?'#f33':c.status==='deserted'?'#666':'#ddd';
+    ctx.fill();ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.stroke();
+
+    if(wCam.zoom>.38){
+      ctx.fillStyle=c.status==='attacked'?'#f88':c.status==='warned'?'#fc8':c.status==='saved'?'#8f8':c.status==='fallen'?'#f88':c.status==='sealed'?'#fc8':c.status==='scorched'?'#c96':c.status==='pandemic'?'#f66':c.status==='deserted'?'#888':'#bbb';
+      ctx.font=`${Math.max(10,12*wCam.zoom)}px Georgia`;ctx.textAlign='center';
+      ctx.fillText(c.name,sp.x,sp.y-dr-4);
+      const labels={attacked:'⚠ UNDER ATTACK',warned:'⚠ HORDE INBOUND',fallen:'☠ FALLEN',saved:'SAVED',sealed:'🚫 SEALED',scorched:'☢ SCORCHED',pandemic:'☣ PANDEMIC',deserted:'☐ DESERTED'};
+      if(labels[c.status]&&CITY_DEF[c.id]){
+        ctx.font=`${Math.max(9,10*wCam.zoom)}px 'Courier New'`;
+        ctx.fillStyle=c.status==='warned'?'#fa4':c.status==='attacked'?'#f44':c.status==='fallen'?'#f55':c.status==='sealed'?'#fa4':c.status==='scorched'?'#c96':c.status==='pandemic'?'#f44':c.status==='deserted'?'#888':'#4f4';
+        ctx.fillText(labels[c.status],sp.x,sp.y+dr+14);
+        if(c.status==='attacked'&&!beingDefended&&c.attackedTimer&&worldPrepTimer<=0){
+          const sec=Math.ceil((CITY_FALL_TIME-c.attackedTimer)/60);
+          ctx.fillStyle=sec<=8?'#f66':'#fa6';ctx.font=`${Math.max(8,9*wCam.zoom)}px 'Courier New'`;
+          ctx.fillText(`falls in ${sec}s`,sp.x,sp.y+dr+26);
+        }
+        if(c.status==='fallen'&&!beingDefended&&(c.fallTimer||0)>0){
+          const sec=Math.ceil(c.fallTimer/60);
+          ctx.fillStyle=sec<=10?'#f66':'#fa6';ctx.font=`${Math.max(8,9*wCam.zoom)}px 'Courier New'`;
+          ctx.fillText(`pandemic in ${sec}s — click`,sp.x,sp.y+dr+26);
+        }
+        if(c.status==='sealed'&&(c.sealTimer||0)>0){
+          const sec=Math.ceil(c.sealTimer/60);
+          ctx.fillStyle=sec<=5?'#f66':'#fa6';ctx.font=`${Math.max(8,9*wCam.zoom)}px 'Courier New'`;
+          ctx.fillText(`seal breaks in ${sec}s`,sp.x,sp.y+dr+26);
+        }
+        if(beingDefended){
+          const d=defenses[c.id];
+          ctx.fillStyle='#9cf';ctx.font=`${Math.max(8,9*wCam.zoom)}px 'Courier New'`;
+          ctx.fillText(`⚔ DEFENDING W${d.wave}/${d.maxWaves} · ❤${d.lives}`,sp.x,sp.y+dr+26);
+        }
+      }
+    }
+  });
+
+  // Build cursor preview
+  if(buildMode){
+    const def=WORLD_BUILDS.find(b=>b.id===buildMode);
+    if(def){
+      const ok=worldGold>=def.cost;
+      ctx.save();ctx.globalAlpha=.6;
+      ctx.strokeStyle=ok?def.color:'#f66';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(mouseX,mouseY,12,0,Math.PI*2);ctx.stroke();
+      const rng=(def.range||def.radius||60)*wCam.zoom;
+      ctx.strokeStyle=ok?def.color+'88':'#f6688';ctx.setLineDash([4,4]);ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(mouseX,mouseY,rng,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.restore();
+      ctx.fillStyle=ok?'#fff':'#f88';ctx.font='12px Courier New';ctx.textAlign='center';
+      ctx.fillText(`${def.name} · $${def.cost}`,mouseX,mouseY-22);
+    }
+  }
+
+  // Prep banner
+  if(worldPrepTimer>0){
+    const sec=Math.ceil(worldPrepTimer/60);
+    ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(canvas.width/2-220,canvas.height-180,440,52);
+    ctx.fillStyle='#fa4';ctx.font='bold 18px Courier New';ctx.textAlign='center';
+    ctx.fillText(`⏳ GLOBAL PREP — hordes arrive in ${sec}s`,canvas.width/2,canvas.height-160);
+    ctx.fillStyle='#aaa';ctx.font='12px Georgia';
+    ctx.fillText('Place artillery, bases, and divisions before the dead start moving',canvas.width/2,canvas.height-140);
+  }
+
+  const fallen=WORLD_CITIES.filter(c=>c.status==='fallen').length;
+  const saved=WORLD_CITIES.filter(c=>c.status==='saved').length;
+  const attacked=WORLD_CITIES.filter(c=>c.status==='attacked').length;
+  const warned=WORLD_CITIES.filter(c=>c.status==='warned').length;
+  dayText.textContent=`☣ DAY ${worldDay} · 💰 ${worldGold}`;
+  statusText.innerHTML=`<span style="color:#f44">Fallen: ${fallen}</span> · <span style="color:#fa4">Inbound: ${warned}</span> · <span style="color:#f88">Attack: ${attacked}</span> · <span style="color:#4f4">Saved: ${saved}</span>`;
+  updateWorldUI();
+}
+
+const BUILDING_COLORS=['#2a2e22','#262b1e','#2d3525','#28301a','#222a1c','#30322a'];
+function drawCityDefense(){
+  const s=defenses[viewedDefId];if(!s)return;
+  const ox=s.offset.x,oy=s.offset.y;
+  ctx.fillStyle='#070707';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(ox-30,oy-30,GRID_W*TILE+60,GRID_H*TILE+60);
+
+  for(let row=0;row<GRID_H;row++)for(let col=0;col<GRID_W;col++){
+    const px=ox+col*TILE,py=oy+row*TILE;
+    if(STREET_GRID[row][col]===0){
+      ctx.fillStyle='#181818';ctx.fillRect(px,py,TILE,TILE);
+      ctx.strokeStyle='rgba(150,130,60,.15)';ctx.lineWidth=1;ctx.setLineDash([6,10]);
+      const isH=(col>0&&STREET_GRID[row][col-1]===0)||(col<GRID_W-1&&STREET_GRID[row][col+1]===0);
+      const isV=(row>0&&STREET_GRID[row-1][col]===0)||(row<GRID_H-1&&STREET_GRID[row+1][col]===0);
+      if(isH){ctx.beginPath();ctx.moveTo(px,py+TILE/2);ctx.lineTo(px+TILE,py+TILE/2);ctx.stroke()}
+      if(isV&&!isH){ctx.beginPath();ctx.moveTo(px+TILE/2,py);ctx.lineTo(px+TILE/2,py+TILE);ctx.stroke()}
+      ctx.setLineDash([]);
+    }else{
+      const i=(row*7+col*3)%BUILDING_COLORS.length;
+      ctx.fillStyle=BUILDING_COLORS[i];ctx.fillRect(px+2,py+2,TILE-4,TILE-4);
+      ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(px+2,py+2,TILE-4,4);
+      for(let wy=0;wy<3;wy++)for(let wx=0;wx<3;wx++){
+        const lit=(row*131+col*17+wy*7+wx)%11;
+        ctx.fillStyle=lit<3?'rgba(255,220,120,.25)':'rgba(150,170,200,.06)';
+        ctx.fillRect(px+6+wx*12,py+10+wy*11,7,7);
+      }
+      ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=1;ctx.strokeRect(px+2,py+2,TILE-4,TILE-4);
+    }
+  }
+
+  const hqp=s.hqpx;
+  ctx.save();
+  ctx.fillStyle='rgba(80,180,255,.18)';ctx.fillRect(ox+s.hq.col*TILE,oy+s.hq.row*TILE,TILE,TILE);
+  ctx.strokeStyle='#4af';ctx.lineWidth=2;ctx.strokeRect(ox+s.hq.col*TILE+2,oy+s.hq.row*TILE+2,TILE-4,TILE-4);
+  ctx.fillStyle='#4af';ctx.font='bold 11px Courier New';ctx.textAlign='center';ctx.fillText('HQ',hqp.x,hqp.y+4);
+  const tt=Date.now()/1000,pp=(Math.sin(tt*2)+1)/2;
+  ctx.beginPath();ctx.arc(hqp.x,hqp.y,15+pp*5,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(100,180,255,${.3+pp*.3})`;ctx.lineWidth=1.5;ctx.stroke();
+  ctx.restore();
+
+  s.def.spawns.forEach(sp=>{
+    const px=tilePxFor(s,sp.col,sp.row);
+    const t=Date.now()/1000,p=(Math.sin(t*3+sp.col)+1)/2;
+    ctx.fillStyle=`rgba(255,60,60,${.15+p*.2})`;
+    ctx.fillRect(ox+sp.col*TILE,oy+sp.row*TILE,TILE,TILE);
+    ctx.strokeStyle='rgba(255,80,80,.5)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.strokeRect(ox+sp.col*TILE+2,oy+sp.row*TILE+2,TILE-4,TILE-4);ctx.setLineDash([]);
+    ctx.fillStyle='#f66';ctx.font='bold 9px Courier New';ctx.textAlign='center';
+    ctx.fillText('SPAWN',px.x,px.y+3);
+  });
+
+  ctx.strokeStyle='#333';ctx.lineWidth=2;ctx.strokeRect(ox,oy,GRID_W*TILE,GRID_H*TILE);
+
+  s.bullets.forEach(b=>{
+    ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fillStyle=b.color;ctx.fill();
+    const dx=b.target.x-b.x,dy=b.target.y-b.y,d=Math.hypot(dx,dy)||1;
+    ctx.strokeStyle=b.color+'66';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-dx/d*10,b.y-dy/d*10);ctx.stroke();
+  });
+  // Player bullets
+  s.pBullets.forEach(b=>{
+    ctx.beginPath();ctx.arc(b.x,b.y,b.aoe>0?4:2.5,0,Math.PI*2);ctx.fillStyle=b.color;ctx.fill();
+    const vl=Math.hypot(b.vx,b.vy)||1;
+    ctx.strokeStyle=b.color+'99';ctx.lineWidth=1.8;
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx/vl*9,b.y-b.vy/vl*9);ctx.stroke();
+  });
+  // Player
+  if(s.player){
+    const p=s.player;
+    if(p.respawn>0){
+      ctx.fillStyle='#f44';ctx.font='bold 13px Courier New';ctx.textAlign='center';
+      ctx.fillText(`RESPAWN ${Math.ceil(p.respawn/60)}s`,s.hqpx.x,s.hqpx.y-22);
+    }else{
+      // Aim line
+      ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=1;ctx.setLineDash([3,5]);
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+Math.cos(p.aim)*60,p.y+Math.sin(p.aim)*60);ctx.stroke();
+      ctx.setLineDash([]);
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.ellipse(p.x,p.y+9,9,4,0,0,Math.PI*2);ctx.fill();
+      // Body
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x,p.y,9,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#333';ctx.lineWidth=1.5;ctx.stroke();
+      // Gun pointing at aim
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.aim);
+      const w=WEAPONS.find(x=>x.id===p.weapon);const wc=w?w.color:'#888';
+      ctx.fillStyle='#222';ctx.fillRect(0,-2,14,4);
+      ctx.fillStyle=wc;ctx.fillRect(10,-1.5,5,3);
+      ctx.restore();
+      // HP bar
+      ctx.fillStyle='#600';ctx.fillRect(p.x-14,p.y-18,28,4);
+      ctx.fillStyle='#0f0';ctx.fillRect(p.x-14,p.y-18,28*Math.max(0,p.hp/p.maxHp),4);
+      ctx.strokeStyle='#000';ctx.strokeRect(p.x-14,p.y-18,28,4);
+      // YOU label
+      ctx.fillStyle='#9cf';ctx.font='bold 9px Courier New';ctx.textAlign='center';
+      ctx.fillText('YOU',p.x,p.y-22);
+    }
+  }
+
+  s.soldiers.forEach(u=>{
+    ctx.beginPath();ctx.arc(u.x,u.y,u.type.range,0,Math.PI*2);
+    ctx.strokeStyle=u.type.color+'14';ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.arc(u.x,u.y+2,11,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=u.type.color;ctx.beginPath();ctx.arc(u.x,u.y,11,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(u.x,u.y,3,0,Math.PI*2);ctx.fill();
+    if(u.state==='retreat'){
+      ctx.fillStyle='#ffaa00';ctx.font='bold 8px Courier New';ctx.textAlign='center';
+      ctx.fillText('!',u.x,u.y-14);
+    }
+    if(u.hp<u.maxHp){
+      ctx.fillStyle='#600';ctx.fillRect(u.x-12,u.y-18,24,3);
+      ctx.fillStyle='#0f0';ctx.fillRect(u.x-12,u.y-18,24*(u.hp/u.maxHp),3);
+    }
+  });
+
+  s.zombies.forEach(z=>{
+    const r=z.boss?14:8;
+    ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.arc(z.x,z.y+2,r,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(z.x,z.y,r,0,Math.PI*2);
+    ctx.fillStyle=z.boss?'#9f0':'#3f3';ctx.fill();
+    ctx.strokeStyle=z.boss?'#670':'#182';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#f00';
+    ctx.beginPath();ctx.arc(z.x-3,z.y-2,1.3,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(z.x+3,z.y-2,1.3,0,Math.PI*2);ctx.fill();
+    if(z.hp<z.maxHp){
+      const bw=z.boss?30:18;
+      ctx.fillStyle='#400';ctx.fillRect(z.x-bw/2,z.y-r-6,bw,3);
+      ctx.fillStyle='#0f0';ctx.fillRect(z.x-bw/2,z.y-r-6,bw*(z.hp/z.maxHp),3);
+    }
+    if(z.boss){ctx.fillStyle='#9f0';ctx.font='bold 10px Courier New';ctx.textAlign='center';ctx.fillText('BOSS',z.x,z.y-r-12)}
+  });
+
+  s.particles.forEach(p=>{
+    const a=p.life/p.max;ctx.globalAlpha=a;ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  });
+
+  // HUD for current city
+  const sec=Math.ceil(s.nextWaveDelay/60);
+  let waveLine='';
+  if(s.prepActive){waveLine=`<div style="color:#fa4">⏳ PREP: ${sec}s</div>`}
+  else if(s.betweenWaves){waveLine=`<div style="color:#aaa">Next wave: ${sec}s</div>`}
+  else{waveLine=`<div style="color:#ff6">⚔ WAVE ACTIVE</div>`}
+  // Other defenses summary
+  let others='';
+  Object.values(defenses).forEach(d=>{
+    if(d.id===s.id||d.result)return;
+    others+=`<div style="color:#9cf;font-size:11px">⚔ ${d.def.name}: W${d.wave}/${d.maxWaves} ❤${d.lives}</div>`;
+  });
+  hudEl.innerHTML=`<div style="color:#c33;font-weight:bold;letter-spacing:2px;margin-bottom:4px">${s.def.name.toUpperCase()}</div><div style="color:#ffd700">💰 ${s.gold}</div><div style="color:#88aaff">📡 Wave ${s.wave}/${s.maxWaves}</div><div style="color:#ff8888">❤ HQ: ${s.lives}</div><div style="color:#88ff88">👥 ${s.soldiers.length} units · ☣ ${s.zombies.length}</div>${waveLine}${others?'<hr style="border-color:#222;margin:4px 0">'+others:''}`;
+  dayText.textContent=`☣ DEFENDING: ${s.def.name.toUpperCase()}`;
+  statusText.textContent=s.prepActive?'Buy soldiers — they spawn at HQ and advance':'Soldiers auto-advance · retreat to HQ when zombies close';
+}
+
+// ── LOOP ─────────────────────────────────────────────────────────────────
+function update(){
+  if(screen==='worldmap'||screen==='citydefense')updateAllDefenses();
+  if(screen==='worldmap'||screen==='citydefense')updateWorldMap();
+  if(screen==='citydefense')updateSoldierUI();
+}
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(screen==='intro')drawIntro();
+  else if(screen==='worldmap')drawWorldMap();
+  else if(screen==='citydefense')drawCityDefense();
+  else if(screen==='result'){if(viewedDefId&&defenses[viewedDefId])drawCityDefense();ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(0,0,canvas.width,canvas.height)}
+}
+function loop(){update();render();requestAnimationFrame(loop)}
+loop();
+</script>
+</body>
+</html>
