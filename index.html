@@ -35,6 +35,16 @@ canvas{display:block;cursor:pointer}
 #leaveBtn{position:fixed;top:50px;right:10px;display:none;padding:6px 14px;background:#1a2a3a;border:1px solid #4a7;color:#9cf;border-radius:4px;cursor:pointer;font-family:'Courier New',monospace;font-size:12px;z-index:4}
 #leaveBtn.show{display:block}
 #leaveBtn:hover{background:#2a4a5a}
+#playerHotbar{position:fixed;bottom:118px;left:50%;transform:translateX(-50%);display:none;gap:6px;z-index:5;font-family:'Courier New',monospace}
+#playerHotbar.show{display:flex}
+.hbSlot{position:relative;width:72px;height:64px;background:rgba(10,10,10,.92);border:2px solid #333;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ccc;padding:4px}
+.hbSlot:hover{border-color:#555;background:rgba(20,20,20,.95)}
+.hbSlot.sel{border-color:#fc6;box-shadow:0 0 10px #fc6}
+.hbSlot .hbName{font-size:10px;text-align:center;line-height:1.15;font-weight:bold}
+.hbSlot .hbStat{font-size:9px;color:#888;margin-top:3px}
+.hbSlot .hbX{position:absolute;top:1px;right:2px;width:14px;height:14px;background:#400;border:1px solid #722;color:#f88;font-size:9px;line-height:11px;text-align:center;border-radius:2px;cursor:pointer;display:none;font-weight:bold}
+.hbSlot:hover .hbX{display:block}
+.hbSlot .hbX:hover{background:#722;color:#fcc}
 </style>
 </head>
 <body>
@@ -44,6 +54,7 @@ canvas{display:block;cursor:pointer}
 <button id="leaveBtn">↩ Return to map (troops keep fighting)</button>
 <div id="waveMsg"></div>
 <div id="ui"></div>
+<div id="playerHotbar"></div>
 <div id="dialog"><div id="dialogBox"><h2 id="dTitle"></h2><div class="sub" id="dSub"></div><div class="story" id="dStory"></div><div id="dBtns"></div></div></div>
 <script>
 const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
@@ -96,7 +107,13 @@ const CONTINENTS=[
 // Philippines (Luzon)
 {c:'#406830',b:'#2c4a20',p:llP([[120,12],[122,13],[122,18],[120,18],[120,12]])},
 // Cuba
-{c:'#3e6028',b:'#2a4418',p:llP([[-85,22],[-74,21],[-74,23],[-85,23],[-85,22]])}
+{c:'#3e6028',b:'#2a4418',p:llP([[-85,22],[-74,21],[-74,23],[-85,23],[-85,22]])},
+// Antarctica (icy continent across the south pole)
+{c:'#dde4ec',b:'#a8b2bc',p:llP([[-180,-65],[-160,-72],[-130,-74],[-100,-73],[-70,-75],[-40,-72],[-10,-70],[20,-69],[50,-66],[80,-65],[110,-65],[140,-66],[170,-70],[180,-72],[180,-85],[-180,-85],[-180,-65]])},
+// Svalbard / Arctic land bridge (gives more snowy land in the high north between Greenland and Siberia)
+{c:'#cfd8d0',b:'#9ea49b',p:llP([[10,78],[30,80],[55,80],[55,76],[30,76],[10,76],[10,78]])},
+// Canadian Arctic Archipelago (extends NA up further north)
+{c:'#cfd8d0',b:'#9ea49b',p:llP([[-130,74],[-100,80],[-75,80],[-65,77],[-75,73],[-100,72],[-130,72],[-130,74]])}
 ];
 // Point-in-polygon: is (x,y) on a landmass?
 function pointInPoly(x,y,poly){
@@ -231,9 +248,9 @@ const WORLD_BUILDS=[
 {id:'wire',name:'Barbed Wire',cost:100,radius:40,slow:.35,dmg:.15,color:'#bbb',desc:'500km · slows + bleeds hordes'},
 {id:'hospital',name:'Field Hospital',cost:400,radius:90,heal:.08,color:'#4cf',desc:'Heals divs · 50% reanimate'},
 {id:'checkpoint',name:'Checkpoint',cost:150,radius:55,blockR:18,slow:.45,dmg:.06,color:'#fc4',desc:'Reroutes + slows + light dmg'},
-{id:'rifle-div',name:'Rifle Div',cost:300,range:65,dmg:18,rate:30,color:'#4af',mobile:true,spd:.45,hp:200,retreat:30,desc:'Mobile infantry'},
+{id:'rifle-div',name:'Rifle Div',cost:300,range:65,dmg:18,rate:30,cooldown:30,color:'#4af',mobile:true,spd:.45,hp:200,retreat:30,desc:'Mobile infantry'},
 {id:'ar-div',name:'AR Div',cost:380,range:70,dmg:12,rate:12,color:'#6cf',mobile:true,spd:.42,hp:210,retreat:32,desc:'Assault rifle · burst fire'},
-{id:'transport',name:'Transport',cost:580,range:0,dmg:0,rate:9999,color:'#9b6',mobile:true,spd:.6,hp:220,retreat:0,splitInto:'rifle-div',splitCount:2,splitTrigger:90,desc:'Fast · drops 2 Rifle Divs near zombies'},
+{id:'transport',name:'Transport',cost:580,range:60,dmg:8,rate:25,color:'#9b6',mobile:true,spd:.6,hp:220,retreat:0,splitInto:'rifle-div',splitCount:2,splitTrigger:90,desc:'Fast · drops 2 Rifle Divs · keeps fighting'},
 {id:'fav-div',name:'Fast Attack',cost:450,range:75,dmg:10,rate:10,color:'#fd6',mobile:true,spd:.7,hp:180,retreat:30,desc:'Light buggy · very fast'},
 {id:'sniper-div',name:'Sniper Div',cost:450,range:140,dmg:60,rate:90,color:'#fa6',mobile:true,spd:.35,hp:140,retreat:55,desc:'Long-range'},
 {id:'apc-div',name:'Armored Vehicle',cost:550,range:70,dmg:22,rate:25,color:'#9b8',mobile:true,spd:.3,hp:350,retreat:18,desc:'APC · tough mid-armor'},
@@ -247,19 +264,45 @@ const WORLD_BUILDS=[
 {id:'gunship',name:'Gunship',cost:750,range:115,dmg:18,rate:15,color:'#aaa',mobile:true,air:true,spd:.55,hp:200,retreat:0,unlockDay:13,desc:'Aerial gunship · 4 shots/sec · rifle dmg · day 13+'},
 {id:'pyro',name:'Pyro Gunner',cost:570,range:75,dmg:6,rate:3,aoe:35,color:'#f63',mobile:true,spd:.36,hp:240,retreat:45,unlockDay:20,desc:'Flame · AOE rapid · day 20+'},
 {id:'mech',name:'Combat Mech',cost:1500,range:95,dmg:7,rate:4,color:'#cdd',mobile:true,spd:.32,hp:350,retreat:25,noInfect:true,unlockCheck:'chinaThreat',desc:'Dual MG · armored · cannot turn'},
-{id:'a254',name:'A254',cost:8000,range:160,dmg:0,rate:9999,color:'#b8c0c8',mobile:true,spd:100,hp:700,retreat:0,noInfect:true,a254:true,desc:'A254 ULTIMATE · 5 missile bays + 2 indep MGs · 700 HP'},
+{id:'a254',name:'A254',cost:8000,range:160,dmg:0,rate:9999,color:'#b8c0c8',mobile:true,spd:25,hp:700,retreat:0,noInfect:true,a254:true,desc:'A254 ULTIMATE · 5 missile bays + 2 indep MGs · 700 HP'},
 {id:'baguette-div',name:'Baguette Div',cost:280,range:28,dmg:32,rate:22,color:'#e8c070',mobile:true,spd:.42,hp:200,retreat:0,desc:'Melee · whacks zombies with baguettes'},
 {id:'laser-div',name:'Laser Gun Div',cost:1200,range:115,dmg:38,rate:14,color:'#9ff',mobile:true,spd:.34,hp:210,retreat:30,unlockDay:67,desc:'Energy beam · day 67+'},
 // ── NAVAL UNITS ── deploy on WATER, move on water, target hordes/zones on land.
 // Double-click any ship to take manual pilot control; double-click again to release.
 {id:'destroyer',name:'Destroyer',cost:800,range:135,minRange:30,dmg:60,rate:50,color:'#6fa0c0',naval:true,mobile:true,spd:.50,hp:350,retreat:0,unlockDay:20,desc:'Fast warship · 2× artillery · day 20+'},
 {id:'battleship',name:'Battleship',cost:1300,range:140,minRange:30,dmg:80,rate:45,mgRange:75,mgDmg:8,mgRate:5,color:'#4e6478',naval:true,mobile:true,spd:.40,hp:600,retreat:0,unlockDay:25,desc:'2× artillery + MG · day 25+'},
-{id:'carrier-ship',name:'Transport Carrier',cost:900,range:0,dmg:0,rate:9999,color:'#7d8a5a',naval:true,mobile:true,spd:.55,hp:400,retreat:0,deployUnit:'rifle-div',deployCount:2,deployExtras:[{type:'mg-div',count:1}],deployTrigger:60,unlockDay:18,desc:'Drops 2 Rifle Divs + 1 MG Div on shore · day 18+'},
+{id:'carrier-ship',name:'Transport Carrier',cost:900,range:70,dmg:9,rate:25,color:'#7d8a5a',naval:true,mobile:true,spd:.55,hp:400,retreat:0,deployUnit:'rifle-div',deployCount:2,deployExtras:[{type:'mg-div',count:1}],deployTrigger:60,unlockDay:18,desc:'Drops 2 Rifle Divs + 1 MG Div on shore · keeps fighting'},
 {id:'aircraft-carrier',name:'Aircraft Carrier',cost:2000,range:130,minRange:30,dmg:30,rate:75,color:'#586b7a',naval:true,mobile:true,spd:.35,hp:800,retreat:0,deployUnit:'ak-plane',deployCount:3,deployTrigger:80,unlockDay:30,desc:'Cannon + 3 AK planes near shore · day 30+'}
 ];
-
+function shotCooldown(def){return def.cooldown!=null?def.cooldown:def.rate;}
+const PLAYER_WORLD_WEAPONS={
+  rifle:{name:'Rifle',color:'#4af',dmg:18,range:65,cooldown:30,aoe:0,visual:'rifle',kind:'ranged'},
+  sniper:{name:'Sniper',color:'#fa6',dmg:60,range:140,cooldown:90,aoe:0,visual:'sniper',kind:'ranged'},
+  mg:{name:'MG',color:'#f55',dmg:9,range:78,cooldown:6,aoe:0,visual:'mg',kind:'ranged'},
+  gatling:{name:'Gatling',color:'#e36',dmg:6,range:82,cooldown:3,aoe:0,visual:'gatling',warmup:120,kind:'ranged'},
+  rpg:{name:'RPG',color:'#fb4',dmg:75,range:100,cooldown:80,aoe:40,visual:'rpg',kind:'ranged'},
+  flamethrower:{name:'Flamethrower',color:'#f63',dmg:8,range:78,cooldown:3,aoe:35,visual:'flame',kind:'ranged'},
+  shotgun:{name:'Shotgun',color:'#fc4',dmg:14,range:50,cooldown:35,aoe:30,visual:'rifle',kind:'ranged'},
+  railgun:{name:'Railgun',color:'#9ff',dmg:200,range:280,cooldown:300,aoe:0,visual:'sniper',kind:'ranged'},
+  crossbow:{name:'Crossbow',color:'#9c6',dmg:35,range:90,cooldown:55,aoe:0,visual:'rifle',kind:'ranged'},
+  paintball:{name:'Paintball',color:'#f3c',dmg:20,range:80,cooldown:4,aoe:0,visual:'rifle',ammo:120,kind:'ranged'}, // ~300 DPS · low ammo
+  battleaxe:{name:'Battle Axe',color:'#a86',dmg:120,range:18,cooldown:45,aoe:0,visual:'rifle',kind:'melee'},
+  hammer:{name:'War Hammer',color:'#963',dmg:160,range:20,cooldown:55,aoe:25,visual:'rifle',kind:'melee'},
+  katana:{name:'Katana',color:'#dde',dmg:90,range:24,cooldown:18,aoe:0,visual:'rifle',kind:'melee'},   // fast melee · long reach
+  baguette:{name:'Baguette',color:'#e8c070',dmg:30,range:30,cooldown:10,aoe:0,visual:'rifle',kind:'melee'}, // crusty whack
+  grenade:{name:'Grenade',color:'#7c4',dmg:80,range:120,cooldown:60,aoe:45,visual:'thrown',kind:'thrown'},
+  warper:{name:'Warper',color:'#c9f',dmg:0,range:0,cooldown:60,aoe:0,visual:'warper',kind:'warper'},
+};
+// Hotbar of equippable weapons — initialized with all weapons; user can remove via UI.
+const playerHotbar=Object.keys(PLAYER_WORLD_WEAPONS);
+// Player ability state (Q = grenade toss, R = Warper portals).
+const playerGrenades=[];   // {x,y,tx,ty,t,dur,fuse}
+const playerPortals=[];    // up to 2 entries: {x,y,t} (t for visual pulse)
+let playerWarperCool=0;
+let playerGrenadeCool=0;
 // ── STATE ────────────────────────────────────────────────────────────────
 let screen='intro',introStep=0,introFade=0;
+let playerCountry=null; // chosen at start; player's rifle-div renders that country's flag
 const INTRO=[
 {t:'LAST STAND',s:'',b:'A zombie outbreak story.'},
 {t:'DAY 0',s:'Kinshasa, DR Congo',b:'A nurse at Mama Yemo Hospital reports patients\nwith unusual aggression and bite wounds.\nShe is the first victim.'},
@@ -366,11 +409,43 @@ const CARPET_HALF_TRACK=180;  // bombs spread ±180 along x from target
 const CARPET_COOLDOWN=1500;   // 25s
 let carpetCool=0;
 const pendingCarpets=[];
-// Single string instead of 6 mutually-exclusive booleans:
-// 'airstrike' | 'nuke' | 'emDeploy' | 'mgStrike' | 'kamikaze' | 'carpet' | null
+// Antimatter Missile — launches from the North Sea Pincurchin base in the Arctic.
+// Hit: 1 dmg micro-splash. Then a black hole expands, sucks hordes inward, compresses
+// to a point, and detonates for 1000 dmg. Total post-hit cycle = 4s.
+const ANTIMATTER_COST=250;
+const ANTIMATTER_FLIGHT=60;        // 1s flight from arctic to target
+const ANTIMATTER_HIT_DMG=1;
+const ANTIMATTER_HIT_AOE=9;        // 75% smaller range
+const ANTIMATTER_EXPAND=30;        // .5s — 2x faster
+const ANTIMATTER_SUCK=60;          // 1s — 2x faster
+const ANTIMATTER_EXPLODE=30;       // .5s — 2x faster
+const ANTIMATTER_BH_RADIUS=28;     // 75% smaller range
+const ANTIMATTER_PULL=2.4;         // pull strength (px/frame at edge)
+const ANTIMATTER_EXPLODE_DMG=1000;
+const ANTIMATTER_EXPLODE_AOE=16;   // 75% smaller range
+const ANTIMATTER_LAUNCH=ll(-40,72);  // Greenland — UPKR base
+const ANTIMATTER_COOLDOWN=600;     // 10s
+let antimatterCool=0;
+const pendingAntimatters=[];
+// D-303 — KAMW (Antarctica) -launched super-missile. Wipes target to dust + leaves a 120s toxic zone.
+// Anything killed inside the blast turns to dust (no reanimation). Any unit entering the
+// toxic zone for the next 120s gets zombified instantly.
+const D303_COST=6767;
+const D303_DMG=5e18;
+const D303_AOE=320;
+const D303_FLIGHT=80;
+const D303_TOXIC_DURATION=7200;
+const D303_LAUNCH=ll(0,-78); // Antarctica — KAMW base
+const D303_COOLDOWN=3600;
+let d303Cool=0;
+const pendingD303s=[];
+const TOXIC_ZONES=[];
+// Single string instead of 7 mutually-exclusive booleans:
+// 'airstrike' | 'nuke' | 'emDeploy' | 'mgStrike' | 'kamikaze' | 'carpet' | 'antimatter' | null
 let armedAbility=null;
 const pendingNukes=[];
 const bomberBlasts=[]; // bomber zombie death explosions (visual + already-applied damage)
+const toxicGasPuffs=[]; // visual puffs when troops dissolve in toxic gas zones
 function nationsFallenFraction(){
   const total=WORLD_CITIES.length;
   let lost=0;
@@ -420,6 +495,43 @@ FOREST_ZONES.forEach(f=>{
     f.trees.push({a:Math.random()*Math.PI*2,rr:Math.sqrt(Math.random())*.93,sz:1.3+Math.random()*1.1});
   }
 });
+// Snowy areas: slow both sides and zombies take slow damage
+const SNOWY_ZONES=[
+  {name:'Antarctica',lon:0,lat:-78,r:200},
+  {name:'East Antarctica',lon:90,lat:-75,r:120},
+  {name:'West Antarctica',lon:-90,lat:-76,r:120},
+  {name:'Greenland',lon:-40,lat:72,r:90},
+  {name:'Canadian Arctic',lon:-95,lat:75,r:100},
+  {name:'Siberian Tundra',lon:110,lat:70,r:120},
+  {name:'Svalbard',lon:30,lat:78,r:55},
+  {name:'Himalayas',lon:87,lat:30,r:70},
+  {name:'Alps',lon:10,lat:46,r:35},
+  {name:'Rockies',lon:-110,lat:50,r:65},
+];
+SNOWY_ZONES.forEach(z=>{Object.assign(z,ll(z.lon,z.lat))});
+// Mountain regions: slow both sides
+const MOUNTAIN_ZONES=[
+  {name:'Andes',lon:-71,lat:-15,r:85},
+  {name:'Caucasus',lon:45,lat:42,r:45},
+  {name:'Atlas',lon:-5,lat:32,r:55},
+  {name:'Urals',lon:60,lat:60,r:50},
+  {name:'Japan Alps',lon:137,lat:36,r:30},
+  {name:'New Zealand Alps',lon:171,lat:-43,r:40},
+];
+MOUNTAIN_ZONES.forEach(z=>{Object.assign(z,ll(z.lon,z.lat))});
+// Toxic gas zones: troops turn into toxic gas if inside
+const TOXIC_GAS_ZONES=[
+  {name:'Chernobyl',lon:30,lat:51,r:60},
+  {name:'Death Valley',lon:-116,lat:36,r:45},
+  {name:'Atacama',lon:-68,lat:-23,r:70},
+];
+TOXIC_GAS_ZONES.forEach(z=>{Object.assign(z,ll(z.lon,z.lat));z.hp=500;z.maxHp=500});
+// Independent faction bases — decorative labels marking the antimatter / D-303 launch sites.
+const FACTION_BASES=[
+  {name:'UPKR',full:'Union of Pincurchin Kingdom Republics',lon:-40,lat:72,color:'#fc4'},
+  {name:'KAMW',full:'KAMW',lon:0,lat:-78,color:'#9f6'},
+];
+FACTION_BASES.forEach(f=>{Object.assign(f,ll(f.lon,f.lat))});
 // Per-country starting military strength. Determines how many free cannons
 // (and possibly a wire ring) are pre-placed around each city at game start.
 const MIL_RATING={
@@ -451,11 +563,33 @@ function spawnStarterMilitary(){
     if(!c)return;
     worldStructures.push({type:'fob',x:c.x+18,y:c.y-18,cooldown:0,hp:fobDef.hp,maxHp:fobDef.hp,state:'idle'});
   });
+  // UPKR garrison: a Fort flanked by 2 static MG divs guards the antimatter launch site.
+  const upkr=FACTION_BASES.find(f=>f.name==='UPKR');
+  if(upkr){
+    const fortDef=WORLD_BUILDS.find(b=>b.id==='fort');
+    const mgDef=WORLD_BUILDS.find(b=>b.id==='mg-div');
+    worldStructures.push({type:'fort',x:upkr.x,y:upkr.y,cooldown:0,hp:fortDef.hp,maxHp:fortDef.hp,state:'idle'});
+    worldStructures.push({type:'mg-div',x:upkr.x-18,y:upkr.y+8,cooldown:0,hp:mgDef.hp,maxHp:mgDef.hp,target:null,_static:true});
+    worldStructures.push({type:'mg-div',x:upkr.x+18,y:upkr.y+8,cooldown:0,hp:mgDef.hp,maxHp:mgDef.hp,target:null,_static:true});
+  }
+  // KAMW garrison: 3 static long-range artillery cannons guard the D-303 launch site.
+  const kamw=FACTION_BASES.find(f=>f.name==='KAMW');
+  if(kamw){
+    const cannonDef=WORLD_BUILDS.find(b=>b.id==='cannon');
+    for(let i=0;i<3;i++){
+      const a=(i/3)*Math.PI*2 - Math.PI/2;
+      const rad=22;
+      worldStructures.push({type:'cannon',x:kamw.x+Math.cos(a)*rad,y:kamw.y+Math.sin(a)*rad,cooldown:0,hp:cannonDef.hp,maxHp:cannonDef.hp,state:'idle'});
+    }
+  }
 }
 const PANDEMIC_FOG_R=85;   // px radius of fog around each pandemic zone
 const FOREST_REVEAL=26;    // troops reveal hordes within this px range inside forest
 spawnStarterMilitary();
 function inForestAt(x,y){for(const f of FOREST_ZONES)if(Math.hypot(x-f.x,y-f.y)<f.r)return f;return null}
+function inSnowyAt(x,y){for(const s of SNOWY_ZONES)if(Math.hypot(x-s.x,y-s.y)<s.r)return s;return null}
+function inMountainAt(x,y){for(const m of MOUNTAIN_ZONES)if(Math.hypot(x-m.x,y-m.y)<m.r)return m;return null}
+function inToxicGasAt(x,y){for(const t of TOXIC_GAS_ZONES)if(Math.hypot(x-t.x,y-t.y)<t.r)return t;return null}
 function inPandemicFogAt(x,y){for(const z of PANDEMIC_ZONES){if((z.hp||0)<=0)continue;if(Math.hypot(x-z.x,y-z.y)<PANDEMIC_FOG_R)return z}return null}
 // True if a unit at (ax,ay) cannot detect/target something at (tx,ty) due to fog/forest.
 function fogBlocks(ax,ay,tx,ty){
@@ -487,6 +621,162 @@ function showDialog(t,s,b,btns){
   dlgEl.classList.add('show');
 }
 function hideDialog(){dlgEl.classList.remove('show')}
+
+// ── FLAGS ──────────────────────────────────────────────────────────────
+// Simplified national flags drawn into a circle of radius r at origin (0,0).
+// Common patterns: hStripes(colors[]), vStripes(colors[]). Some flags add a
+// central emblem (a circle / star / etc.) on top of the bands.
+function _hStripes(ctx,r,colors){
+  const w=r*2,h=r*2,band=h/colors.length;
+  for(let i=0;i<colors.length;i++){ctx.fillStyle=colors[i];ctx.fillRect(-r,-r+i*band,w,band+1)}
+}
+function _vStripes(ctx,r,colors){
+  const w=r*2,h=r*2,band=w/colors.length;
+  for(let i=0;i<colors.length;i++){ctx.fillStyle=colors[i];ctx.fillRect(-r+i*band,-r,band+1,h)}
+}
+function _star(ctx,cx,cy,rOuter,color){
+  ctx.fillStyle=color;ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const a=i*Math.PI/5-Math.PI/2,rr=i%2===0?rOuter:rOuter*.45;
+    const px=cx+Math.cos(a)*rr,py=cy+Math.sin(a)*rr;
+    if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }
+  ctx.closePath();ctx.fill();
+}
+function drawCountryFlag(ctx,r,country){
+  ctx.save();
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.clip();
+  switch(country){
+    case 'argentina':_hStripes(ctx,r,['#74ACDF','#FFFFFF','#74ACDF']);ctx.fillStyle='#F6B40E';ctx.beginPath();ctx.arc(0,0,r*.22,0,Math.PI*2);ctx.fill();break;
+    case 'southafrica':_hStripes(ctx,r,['#E03C31','#FFFFFF','#001489']);ctx.fillStyle='#007749';ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(0,0);ctx.lineTo(-r,r);ctx.closePath();ctx.fill();break;
+    case 'mexico':_vStripes(ctx,r,['#006847','#FFFFFF','#CE1126']);ctx.fillStyle='#5B3A1B';ctx.beginPath();ctx.arc(0,0,r*.20,0,Math.PI*2);ctx.fill();break;
+    case 'saudiarabia':ctx.fillStyle='#006C35';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#FFFFFF';ctx.fillRect(-r*.6,-r*.1,r*1.2,r*.18);break;
+    case 'turkey':ctx.fillStyle='#E30A17';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.arc(-r*.05,0,r*.4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#E30A17';ctx.beginPath();ctx.arc(r*.08,0,r*.32,0,Math.PI*2);ctx.fill();_star(ctx,r*.35,0,r*.18,'#FFFFFF');break;
+    case 'brazil':ctx.fillStyle='#009C3B';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#FFDF00';ctx.beginPath();ctx.moveTo(0,-r*.7);ctx.lineTo(r*.85,0);ctx.lineTo(0,r*.7);ctx.lineTo(-r*.85,0);ctx.closePath();ctx.fill();ctx.fillStyle='#002776';ctx.beginPath();ctx.arc(0,0,r*.32,0,Math.PI*2);ctx.fill();break;
+    case 'italy':_vStripes(ctx,r,['#009246','#FFFFFF','#CE2B37']);break;
+    case 'france':_vStripes(ctx,r,['#0055A4','#FFFFFF','#EF4135']);break;
+    case 'germany':_hStripes(ctx,r,['#000000','#DD0000','#FFCE00']);break;
+    case 'canada':_vStripes(ctx,r,['#D52B1E','#FFFFFF','#D52B1E']);ctx.fillStyle='#D52B1E';ctx.beginPath();ctx.moveTo(0,-r*.5);ctx.lineTo(r*.18,-r*.05);ctx.lineTo(r*.4,-r*.1);ctx.lineTo(r*.25,r*.25);ctx.lineTo(r*.1,r*.5);ctx.lineTo(-r*.1,r*.5);ctx.lineTo(-r*.25,r*.25);ctx.lineTo(-r*.4,-r*.1);ctx.lineTo(-r*.18,-r*.05);ctx.closePath();ctx.fill();break;
+    case 'australia':ctx.fillStyle='#012169';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r,r,r);ctx.strokeStyle='#C8102E';ctx.lineWidth=r*.12;ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(0,0);ctx.moveTo(-r,0);ctx.lineTo(0,-r);ctx.stroke();_star(ctx,r*.4,r*.3,r*.18,'#FFFFFF');break;
+    case 'southkorea':ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#CD2E3A';ctx.beginPath();ctx.arc(0,0,r*.4,Math.PI,0);ctx.fill();ctx.fillStyle='#0047A0';ctx.beginPath();ctx.arc(0,0,r*.4,0,Math.PI);ctx.fill();break;
+    case 'india':_hStripes(ctx,r,['#FF9933','#FFFFFF','#138808']);ctx.strokeStyle='#000080';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,r*.18,0,Math.PI*2);ctx.stroke();break;
+    case 'uk':ctx.fillStyle='#012169';ctx.fillRect(-r,-r,r*2,r*2);ctx.strokeStyle='#FFFFFF';ctx.lineWidth=r*.35;ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(r,r);ctx.moveTo(-r,r);ctx.lineTo(r,-r);ctx.stroke();ctx.strokeStyle='#C8102E';ctx.lineWidth=r*.18;ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(r,r);ctx.moveTo(-r,r);ctx.lineTo(r,-r);ctx.stroke();ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r*.18,r*2,r*.36);ctx.fillRect(-r*.18,-r,r*.36,r*2);ctx.fillStyle='#C8102E';ctx.fillRect(-r,-r*.10,r*2,r*.20);ctx.fillRect(-r*.10,-r,r*.20,r*2);break;
+    case 'japan':ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#BC002D';ctx.beginPath();ctx.arc(0,0,r*.5,0,Math.PI*2);ctx.fill();break;
+    case 'russia':_hStripes(ctx,r,['#FFFFFF','#0039A6','#D52B1E']);break;
+    case 'china':ctx.fillStyle='#DE2910';ctx.fillRect(-r,-r,r*2,r*2);_star(ctx,-r*.45,-r*.45,r*.25,'#FFDE00');_star(ctx,-r*.15,-r*.7,r*.12,'#FFDE00');_star(ctx,0,-r*.5,r*.12,'#FFDE00');_star(ctx,0,-r*.25,r*.12,'#FFDE00');_star(ctx,-r*.15,-r*.05,r*.12,'#FFDE00');break;
+    case 'usa':for(let i=0;i<7;i++){ctx.fillStyle=i%2===0?'#B22234':'#FFFFFF';ctx.fillRect(-r,-r+i*(r*2/7),r*2,r*2/7+1)}ctx.fillStyle='#3C3B6E';ctx.fillRect(-r,-r,r,r);_star(ctx,-r*.5,-r*.5,r*.18,'#FFFFFF');break;
+    case 'indonesia':_hStripes(ctx,r,['#FF0000','#FFFFFF']);break;
+    case 'northkorea':ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#024FA2';ctx.fillRect(-r,-r,r*2,r*.30);ctx.fillRect(-r,r-r*.30,r*2,r*.30);ctx.fillStyle='#ED1C27';ctx.fillRect(-r,-r*.5,r*2,r);ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.arc(-r*.25,0,r*.22,0,Math.PI*2);ctx.fill();_star(ctx,-r*.25,0,r*.16,'#ED1C27');break;
+    case 'israel':_hStripes(ctx,r,['#FFFFFF','#0038B8','#FFFFFF','#0038B8','#FFFFFF']);ctx.strokeStyle='#0038B8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,-r*.4);ctx.lineTo(r*.35,r*.2);ctx.lineTo(-r*.35,r*.2);ctx.closePath();ctx.moveTo(0,r*.4);ctx.lineTo(r*.35,-r*.2);ctx.lineTo(-r*.35,-r*.2);ctx.closePath();ctx.stroke();break;
+    case 'iran':_hStripes(ctx,r,['#239F40','#FFFFFF','#DA0000']);ctx.fillStyle='#DA0000';ctx.beginPath();ctx.arc(0,0,r*.2,0,Math.PI*2);ctx.fill();break;
+    case 'egypt':_hStripes(ctx,r,['#CE1126','#FFFFFF','#000000']);ctx.fillStyle='#C09300';ctx.beginPath();ctx.arc(0,0,r*.2,0,Math.PI*2);ctx.fill();break;
+    case 'ukraine':_hStripes(ctx,r,['#0057B7','#FFD700']);break;
+    case 'pakistan':ctx.fillStyle='#01411C';ctx.fillRect(-r,-r,r*2,r*2);ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r,r*.5,r*2);ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.arc(r*.15,0,r*.32,0,Math.PI*2);ctx.fill();ctx.fillStyle='#01411C';ctx.beginPath();ctx.arc(r*.28,0,r*.26,0,Math.PI*2);ctx.fill();_star(ctx,r*.5,-r*.05,r*.13,'#FFFFFF');break;
+    case 'vietnam':ctx.fillStyle='#DA251D';ctx.fillRect(-r,-r,r*2,r*2);_star(ctx,0,0,r*.45,'#FFFF00');break;
+    case 'thailand':_hStripes(ctx,r,['#A51931','#F4F5F8','#2D2A4A','#F4F5F8','#A51931']);break;
+    case 'spain':_hStripes(ctx,r,['#AA151B','#F1BF00','#F1BF00','#AA151B']);break;
+    case 'poland':_hStripes(ctx,r,['#FFFFFF','#DC143C']);break;
+    case 'greece':_hStripes(ctx,r,['#0D5EAF','#FFFFFF','#0D5EAF','#FFFFFF','#0D5EAF','#FFFFFF','#0D5EAF','#FFFFFF','#0D5EAF']);ctx.fillStyle='#0D5EAF';ctx.fillRect(-r,-r,r*.9,r*.9);ctx.strokeStyle='#FFFFFF';ctx.lineWidth=r*.12;ctx.beginPath();ctx.moveTo(-r*.55,-r);ctx.lineTo(-r*.55,-r*.1);ctx.moveTo(-r,-r*.55);ctx.lineTo(-r*.1,-r*.55);ctx.stroke();break;
+    case 'singapore':_hStripes(ctx,r,['#EF3340','#FFFFFF']);ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.arc(-r*.4,-r*.5,r*.25,0,Math.PI*2);ctx.fill();ctx.fillStyle='#EF3340';ctx.beginPath();ctx.arc(-r*.3,-r*.5,r*.22,0,Math.PI*2);ctx.fill();break;
+    case 'philippines':ctx.fillStyle='#0038A8';ctx.fillRect(-r,-r,r*2,r);ctx.fillStyle='#CE1126';ctx.fillRect(-r,0,r*2,r);ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(0,0);ctx.lineTo(-r,r);ctx.closePath();ctx.fill();_star(ctx,-r*.5,0,r*.10,'#FCD116');break;
+    case 'nigeria':_vStripes(ctx,r,['#008751','#FFFFFF','#008751']);break;
+    case 'kenya':_hStripes(ctx,r,['#000000','#FFFFFF','#BB0000','#FFFFFF','#006600']);break;
+    case 'kamw':
+      // White background. Left half: two crossed guns (black silhouettes).
+      // Right half: a green triangle (pointing right toward edge).
+      ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,-r,r*2,r*2);
+      ctx.save();ctx.translate(-r*.45,0);
+      // Gun 1 — diagonal /
+      ctx.save();ctx.rotate(-Math.PI/5);
+      ctx.fillStyle='#000';ctx.fillRect(-r*.45,-r*.06,r*.9,r*.12);
+      ctx.fillRect(-r*.55,-r*.10,r*.18,r*.20); // stock
+      ctx.restore();
+      // Gun 2 — diagonal \
+      ctx.save();ctx.rotate(Math.PI/5);
+      ctx.fillStyle='#000';ctx.fillRect(-r*.45,-r*.06,r*.9,r*.12);
+      ctx.fillRect(-r*.55,-r*.10,r*.18,r*.20); // stock
+      ctx.restore();
+      ctx.restore();
+      // Right side triangle (green, pointing right)
+      ctx.fillStyle='#2A9F4A';ctx.beginPath();
+      ctx.moveTo(r*.05,-r*.55);ctx.lineTo(r*.85,0);ctx.lineTo(r*.05,r*.55);ctx.closePath();ctx.fill();
+      break;
+    case 'upkr':
+      // Two horizontal stripes on the LEFT and RIGHT of a central blue rectangle.
+      // Inside the blue rect: white circle > red triangle (point up) > yellow star.
+      const leftW=r*.55,blueLeft=-r+leftW,blueRight=r-leftW;
+      // Left side stripes (red top, white bottom)
+      ctx.fillStyle='#D52B1E';ctx.fillRect(-r,-r,leftW,r);
+      ctx.fillStyle='#FFFFFF';ctx.fillRect(-r,0,leftW,r);
+      // Right side stripes (red top, white bottom)
+      ctx.fillStyle='#D52B1E';ctx.fillRect(blueRight,-r,leftW,r);
+      ctx.fillStyle='#FFFFFF';ctx.fillRect(blueRight,0,leftW,r);
+      // Center blue rectangle
+      ctx.fillStyle='#0047A0';ctx.fillRect(blueLeft,-r,blueRight-blueLeft,r*2);
+      // White circle inside blue
+      ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.arc(0,0,r*.4,0,Math.PI*2);ctx.fill();
+      // Red triangle inside circle (pointing up)
+      ctx.fillStyle='#D52B1E';ctx.beginPath();
+      ctx.moveTo(0,-r*.32);ctx.lineTo(r*.28,r*.18);ctx.lineTo(-r*.28,r*.18);ctx.closePath();ctx.fill();
+      // Yellow star inside triangle
+      _star(ctx,0,r*.02,r*.13,'#FFD700');
+      break;
+    default:
+      // unknown country: solid neutral grey
+      ctx.fillStyle='#888';ctx.fillRect(-r,-r,r*2,r*2);
+  }
+  ctx.restore();
+  // outline
+  ctx.strokeStyle='#000';ctx.lineWidth=Math.max(1.2,1.6*wCam.zoom);
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.stroke();
+}
+
+// All countries the player can pick from at game start.
+function getPlayableCountries(){
+  const list=WORLD_CITIES.map(c=>({id:c.id,name:c.name}));
+  list.push({id:'upkr',name:'UPKR'});
+  list.push({id:'kamw',name:'KAMW'});
+  return list;
+}
+function spawnPlayerDivision(){
+  const rifleDef=WORLD_BUILDS.find(b=>b.id==='rifle-div');
+  if(!rifleDef)return;
+  let x,y;
+  if(playerCountry==='upkr'){
+    const u=FACTION_BASES.find(f=>f.name==='UPKR');
+    if(u){x=u.x;y=u.y+30}
+  }else if(playerCountry==='kamw'){
+    const k=FACTION_BASES.find(f=>f.name==='KAMW');
+    if(k){x=k.x;y=k.y-30}
+  }else{
+    const c=WORLD_CITIES.find(c=>c.id===playerCountry);
+    if(c){x=c.x;y=c.y+12}
+  }
+  if(x===undefined)return;
+  worldStructures.push({type:'rifle-div',x,y,cooldown:0,hp:rifleDef.hp,maxHp:rifleDef.hp,target:null,_player:true,_weapon:'rifle',_gatWarm:0});
+}
+function showCountryPicker(){
+  dlgTitle.textContent='SELECT YOUR COUNTRY';
+  dlgSub.textContent='Your division will fly its flag';
+  dlgStory.textContent='';
+  dlgBtns.innerHTML='';
+  dlgBtns.style.maxHeight='60vh';dlgBtns.style.overflowY='auto';
+  getPlayableCountries().forEach(c=>{
+    const e=document.createElement('button');
+    e.textContent=c.name;
+    e.style.padding='6px 14px';e.style.fontSize='13px';e.style.margin='3px';
+    e.onclick=()=>{
+      playerCountry=c.id;
+      hideDialog();
+      dlgBtns.style.maxHeight='';dlgBtns.style.overflowY='';
+      screen='worldmap';topbar.classList.add('show');buildWorldUI();uiEl.classList.add('show');
+      spawnPlayerDivision();
+      flash(`Playing as ${c.name}`,'#9cf',2000);
+    };
+    dlgBtns.appendChild(e);
+  });
+  dlgEl.classList.add('show');
+}
 
 const EVAC_TIME=900; // 15s evacuation delay
 const EVAC_COST=200;
@@ -775,6 +1065,30 @@ function buildWorldUI(){
     updateWorldUI();
   };
   uiEl.appendChild(cb);
+  // Antimatter Missile — Pincurchin base, no launch condition, 4s black-hole cycle.
+  const am=document.createElement('div');am.className='sBtn';am.id='amBtn';
+  am.innerHTML=`<div class="n" style="color:#c8f">⬣ Antimatter</div><div class="c">$${ANTIMATTER_COST}</div><div class="d">Pincurchin base · black hole · 1000 dmg · 10s cd</div>`;
+  am.onclick=()=>{
+    if(armedAbility==='antimatter'){armedAbility=null;flash(`Antimatter disarmed`,'#aaa',1000);updateWorldUI();return}
+    if(antimatterCool>0){flash(`Antimatter recharging (${Math.ceil(antimatterCool/60)}s)`,'#f66',1400);return}
+    if(worldGold<ANTIMATTER_COST){flash(`Not enough gold ($${ANTIMATTER_COST})`,'#f66',1400);return}
+    armedAbility='antimatter';buildMode=null;
+    flash(`⬣ Click on map to designate antimatter strike`,'#c8f',2000);
+    updateWorldUI();
+  };
+  uiEl.appendChild(am);
+  // D-303 — Japan-launched super-missile. Wipes ~all of China to dust, leaves 120s toxic zone.
+  const d303=document.createElement('div');d303.className='sBtn';d303.id='d303Btn';
+  d303.innerHTML=`<div class="n" style="color:#9f6">☣ D-303</div><div class="c">$${D303_COST}</div><div class="d">KAMW (Antarctica) launch · 5×10¹⁸ dmg · dust + 120s toxic zone</div>`;
+  d303.onclick=()=>{
+    if(armedAbility==='d303'){armedAbility=null;flash(`D-303 disarmed`,'#aaa',1000);updateWorldUI();return}
+    if(d303Cool>0){flash(`D-303 recharging (${Math.ceil(d303Cool/60)}s)`,'#f66',1400);return}
+    if(worldGold<D303_COST){flash(`Not enough gold ($${D303_COST})`,'#f66',1400);return}
+    armedAbility='d303';buildMode=null;
+    flash(`☣ Click on map to designate D-303 strike`,'#9f6',2000);
+    updateWorldUI();
+  };
+  uiEl.appendChild(d303);
   const cancel=document.createElement('div');cancel.className='sBtn';
   cancel.innerHTML=`<div class="n" style="color:#aaa">Cancel</div><div class="d">deselect</div>`;
   cancel.onclick=()=>{buildMode=null;armedAbility=null;updateWorldUI()};
@@ -852,8 +1166,59 @@ function updateWorldUI(){
       cbBtn.classList.toggle('sel',armedAbility==='carpet');
     }
     const cbStatus=armedAbility==='carpet'?`<div style="color:#fb6">✈✈ CARPET ARMED</div>`:carpetCool>0?`<div style="color:#888">✈✈ cd ${Math.ceil(carpetCool/60)}s</div>`:'';
-    const promptText=armedAbility==='nuke'?'Click map to NUKE':armedAbility==='airstrike'?'Click map to strike':armedAbility==='mgStrike'?'Click map to strafe':armedAbility==='kamikaze'?'Click map to crash kamikaze':armedAbility==='carpet'?'Click map to carpet bomb':armedAbility==='emDeploy'?'Click map to deploy MG':buildMode?'Click map to place':'Pick a build →';
-    stats.innerHTML=`<div style="color:#ffd700">💰 World: ${worldGold}</div><div style="color:#fc6">🎯 ${cn} · 🏠 ${fb} · 👥 ${dv}</div><div style="color:#9cf">⚔ Defenses: ${def}</div>${scanStatus}${airStatus}${nukeStatus}${emStatus}${mgsStatus}${kamStatus}${cbStatus}<div style="color:#888">${promptText}</div>`;
+    const amBtn=document.getElementById('amBtn');
+    if(amBtn){
+      amBtn.classList.toggle('cant',worldGold<ANTIMATTER_COST||antimatterCool>0);
+      amBtn.classList.toggle('sel',armedAbility==='antimatter');
+    }
+    const amStatus=armedAbility==='antimatter'?`<div style="color:#c8f">⬣ ANTIMATTER ARMED</div>`:antimatterCool>0?`<div style="color:#888">⬣ cd ${Math.ceil(antimatterCool/60)}s</div>`:'';
+    const d303Btn=document.getElementById('d303Btn');
+    if(d303Btn){
+      d303Btn.classList.toggle('cant',worldGold<D303_COST||d303Cool>0);
+      d303Btn.classList.toggle('sel',armedAbility==='d303');
+    }
+    const d303Status=armedAbility==='d303'?`<div style="color:#9f6">☣ D-303 ARMED</div>`:d303Cool>0?`<div style="color:#888">☣ cd ${Math.ceil(d303Cool/60)}s</div>`:'';
+    const promptText=armedAbility==='nuke'?'Click map to NUKE':armedAbility==='airstrike'?'Click map to strike':armedAbility==='mgStrike'?'Click map to strafe':armedAbility==='kamikaze'?'Click map to crash kamikaze':armedAbility==='carpet'?'Click map to carpet bomb':armedAbility==='antimatter'?'Click map to launch antimatter':armedAbility==='d303'?'Click map to launch D-303':armedAbility==='emDeploy'?'Click map to deploy MG':buildMode?'Click map to place':'Pick a build →';
+    stats.innerHTML=`<div style="color:#ffd700">💰 World: ${worldGold}</div><div style="color:#fc6">🎯 ${cn} · 🏠 ${fb} · 👥 ${dv}</div><div style="color:#9cf">⚔ Defenses: ${def}</div>${scanStatus}${airStatus}${nukeStatus}${emStatus}${mgsStatus}${kamStatus}${cbStatus}${amStatus}${d303Status}<div style="color:#888">${promptText}</div>`;
+  }
+  renderHotbar();
+}
+function renderHotbar(){
+  const el=document.getElementById('playerHotbar');
+  if(!el)return;
+  const playerS=worldStructures.find(u=>u._player&&(u.hp||0)>0);
+  const showHotbar=screen==='worldmap'&&!!playerS;
+  el.classList.toggle('show',showHotbar);
+  if(!showHotbar){el._sig=null;return}
+  // Re-render only when slot list or equipped weapon changes
+  const sig=playerHotbar.join(',')+'|'+(playerS._weapon||'');
+  if(el._sig===sig)return;
+  el._sig=sig;
+  el.innerHTML='';
+  for(const id of playerHotbar){
+    const w=PLAYER_WORLD_WEAPONS[id];if(!w)continue;
+    const slot=document.createElement('div');
+    slot.className='hbSlot'+(playerS._weapon===id?' sel':'');
+    slot.style.color=w.color;
+    const stat=w.kind==='warper'?'TELEPORT':w.kind==='thrown'?`AOE ${w.aoe}`:w.kind==='melee'?`MELEE ${w.dmg}`:`${w.dmg}·r${w.range}`;
+    slot.innerHTML=`<div class="hbX" title="Remove from hotbar">✕</div><div class="hbName">${w.name}</div><div class="hbStat">${stat}</div>`;
+    slot.addEventListener('click',ev=>{
+      if(ev.target.classList.contains('hbX')){
+        ev.stopPropagation();
+        const idx=playerHotbar.indexOf(id);
+        if(idx>=0)playerHotbar.splice(idx,1);
+        if(playerS._weapon===id){
+          playerS._weapon=playerHotbar[0]||null;
+        }
+        el._sig=null;
+        renderHotbar();
+        return;
+      }
+      playerS._weapon=id;
+      el._sig=null;
+      renderHotbar();
+    });
+    el.appendChild(slot);
   }
 }
 
@@ -879,7 +1244,7 @@ canvas.addEventListener('mouseup',e=>{
 canvas.addEventListener('click',e=>{
   if(dlgEl.classList.contains('show'))return;
   const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-  if(screen==='intro'){introFade=0;introStep++;if(introStep>=INTRO.length){introStep=0;screen='worldmap';topbar.classList.add('show');buildWorldUI();uiEl.classList.add('show')}return}
+  if(screen==='intro'){introFade=0;introStep++;if(introStep>=INTRO.length){introStep=0;showCountryPicker()}return}
   if(screen==='worldmap'){
     if(wDM)return;
     if(armedAbility==='airstrike'){
@@ -950,6 +1315,29 @@ canvas.addEventListener('click',e=>{
       pendingCarpets.push({x:wx,y:wy,timer:CARPET_DURATION,dropped:0});
       armedAbility=null;carpetCool=CARPET_COOLDOWN;
       flash(`✈✈ Carpet bomber inbound`,'#fb6',1600);
+      updateWorldUI();
+      return;
+    }
+    if(armedAbility==='antimatter'){
+      const wx=(mx-canvas.width/2)/wCam.zoom+wCam.x;
+      const wy=(my-canvas.height/2)/wCam.zoom+wCam.y;
+      if(worldGold<ANTIMATTER_COST){flash(`Not enough gold ($${ANTIMATTER_COST})`,'#f66',1400);armedAbility=null;updateWorldUI();return}
+      worldGold-=ANTIMATTER_COST;
+      // Missile launches from Pincurchin Arctic base; phase machine handles flight → hit → bh → explode.
+      pendingAntimatters.push({tx:wx,ty:wy,fx:ANTIMATTER_LAUNCH.x,fy:ANTIMATTER_LAUNCH.y,phase:'flight',t:0});
+      armedAbility=null;antimatterCool=ANTIMATTER_COOLDOWN;
+      flash(`⬣ LAUNCHING FROM NORTH SEA PINCURCHIN BASE`,'#c8f',2400);
+      updateWorldUI();
+      return;
+    }
+    if(armedAbility==='d303'){
+      const wx=(mx-canvas.width/2)/wCam.zoom+wCam.x;
+      const wy=(my-canvas.height/2)/wCam.zoom+wCam.y;
+      if(worldGold<D303_COST){flash(`Not enough gold ($${D303_COST})`,'#f66',1400);armedAbility=null;updateWorldUI();return}
+      worldGold-=D303_COST;
+      pendingD303s.push({tx:wx,ty:wy,fx:D303_LAUNCH.x,fy:D303_LAUNCH.y,phase:'flight',t:0});
+      armedAbility=null;d303Cool=D303_COOLDOWN;
+      flash(`☣ D-303 LAUNCHED FROM JAPAN`,'#9f6',2400);
       updateWorldUI();
       return;
     }
@@ -1127,6 +1515,9 @@ function updateHordes(){
         }
       }
     }
+    // Snowy areas: slow + slowly damage zombies. Mountains: slow.
+    if(inSnowyAt(h.x,h.y)){slowFactor=Math.min(slowFactor,.5);h.hp-=.05}
+    if(inMountainAt(h.x,h.y))slowFactor=Math.min(slowFactor,.5);
     h._slow=slowFactor;
     // Find the nearest mobile division (or destructible Forward Base) within engagement range.
     // Arrived hordes use a wider sense range — they chew anything that comes close to the city.
@@ -1308,6 +1699,13 @@ function updateWorldStructures(){
   worldStructures.forEach(s=>{
     const def=WORLD_BUILDS.find(b=>b.id===s.type);if(!def)return;
     if(def.mobile){
+      // Toxic gas zones: any troop inside is converted to harmless toxic gas.
+      if(inToxicGasAt(s.x,s.y)&&!s._toxicGas){
+        s._toxicGas=true;
+        s.hp=0;
+        toxicGasPuffs.push({x:s.x,y:s.y,t:0,dur:60});
+        return;
+      }
       // Fog/forest blinds the unit's targeting (mutual blindness; player still sees everything).
       // Search radius generous enough to allow the unit to approach hordes outside firing range.
       let target=null,minD=Infinity;
@@ -1318,8 +1716,9 @@ function updateWorldStructures(){
         if(def.minRange&&d<def.minRange)return;
         if(d<minD){minD=d;target=h}
       });
-      // Transport: when a horde is in trigger range, drop its payload (rifle divs + extras) and despawn.
-      if(def.splitInto&&target&&minD<def.splitTrigger&&worldPrepTimer<=0){
+      // Transport: when a horde is in trigger range, drop its payload (rifle divs + extras) ONCE.
+      // Transport itself sticks around with light weapons after deploying.
+      if(def.splitInto&&!s._deployed&&target&&minD<def.splitTrigger&&worldPrepTimer<=0){
         const childDef=WORLD_BUILDS.find(b=>b.id===def.splitInto);
         if(childDef){
           // Total payload = main split + any extras, distributed around the transport in a ring.
@@ -1339,9 +1738,9 @@ function updateWorldStructures(){
               worldStructures.push({type:ex.type,x:s.x+Math.cos(a)*8,y:s.y+Math.sin(a)*8,cooldown:0,hp:exDef.hp,maxHp:exDef.hp,state:'idle'});
             }
           }
-          s.hp=0;s._consumed=true;
+          s._deployed=true;
           flash(`🚚 Transport deployed — 2 Rifle Divs + 1 MG Div in field`,'#9b6',1400);
-          return;
+          // fall through so the transport itself can still target/fire this frame
         }
       }
       // All mobile units seek out pandemic zones when no horde threat is closer.
@@ -1365,31 +1764,44 @@ function updateWorldStructures(){
       s.flash=Math.max(0,(s.flash||0)-1);
       if(target){
         const dx=target.x-s.x,dy=target.y-s.y,d=Math.hypot(dx,dy)||1;
-        const moveSpd=def.spd*(inForestAt(s.x,s.y)?.5:1);
+        let speedMul=1;
+        if(inForestAt(s.x,s.y))speedMul=.5;
+        if(inSnowyAt(s.x,s.y))speedMul=Math.min(speedMul,.5);
+        if(inMountainAt(s.x,s.y))speedMul=Math.min(speedMul,.5);
+        const moveSpd=def.spd*speedMul;
         // Naval ships move on water only; air anywhere; everything else on land.
-        const tryMove=(nx,ny)=>{if(worldPrepTimer>0)return false;if(def.air||(def.naval?!isLand(nx,ny):isLand(nx,ny))){s.x=nx;s.y=ny;return true}return false};
+        // Reject moves that would enter a toxic gas zone — troops dissolve there.
+        // Static units (e.g. UPKR garrison MGs) never move but still fire.
+        const tryMove=(nx,ny)=>{if(worldPrepTimer>0)return false;if(s._static)return false;if(inToxicGasAt(nx,ny))return false;if(def.air||(def.naval?!isLand(nx,ny):isLand(nx,ny))){s.x=nx;s.y=ny;return true}return false};
         // Pilot override: a manually-driven naval ship moves toward s.dest and ignores AI movement.
         // Turrets keep auto-firing at any in-range target.
         const piloted=def.naval&&s===pilotedShip;
-        if(piloted&&s.dest){
-          const ddx=s.dest.x-s.x,ddy=s.dest.y-s.y,dd=Math.hypot(ddx,ddy)||1;
-          if(dd>moveSpd*1.2)tryMove(s.x+ddx/dd*moveSpd,s.y+ddy/dd*moveSpd);
-          s.state='pilot';
-        }else if(d<def.retreat){
-          s.state='retreat';
-          tryMove(s.x-dx/d*moveSpd,s.y-dy/d*moveSpd);
-        }else if(d<def.range){
-          s.state='engage';
-        }else{
-          s.state='approach';
-          if(!tryMove(s.x+dx/d*moveSpd,s.y+dy/d*moveSpd)){
-            // Try sliding along axes to follow coastline
-            if(!tryMove(s.x+dx/d*moveSpd,s.y))tryMove(s.x,s.y+dy/d*moveSpd);
+        if(!s._player){
+          if(piloted&&s.dest){
+            const ddx=s.dest.x-s.x,ddy=s.dest.y-s.y,dd=Math.hypot(ddx,ddy)||1;
+            if(dd>moveSpd*1.2)tryMove(s.x+ddx/dd*moveSpd,s.y+ddy/dd*moveSpd);
+            s.state='pilot';
+          }else if(d<def.retreat){
+            s.state='retreat';
+            tryMove(s.x-dx/d*moveSpd,s.y-dy/d*moveSpd);
+          }else if(d<def.range){
+            s.state='engage';
+          }else{
+            s.state='approach';
+            if(!tryMove(s.x+dx/d*moveSpd,s.y+dy/d*moveSpd)){
+              // Try sliding along axes to follow coastline
+              if(!tryMove(s.x+dx/d*moveSpd,s.y))tryMove(s.x,s.y+dy/d*moveSpd);
+            }
           }
+        }else{
+          // Player division: no AI movement (WASD only in updateWorldMap). Keep state for consistency.
+          if(d<def.retreat)s.state='retreat';
+          else if(d<def.range)s.state='engage';
+          else s.state='approach';
         }
         // Firing logic — independent of pilot/auto state. Fires whenever target is in range
-        // (and outside minRange for ships with naval cannons).
-        if(d<def.range&&d>=(def.minRange||0)&&s.cooldown<=0&&worldPrepTimer<=0&&def.dmg>0){
+        // (and outside minRange for ships with naval cannons). Player division fires on E only (after cooldown tick).
+        if(!s._player&&d<def.range&&d>=(def.minRange||0)&&s.cooldown<=0&&worldPrepTimer<=0&&def.dmg>0){
           if(def.aoe){
             forHordesInRadius(target.x,target.y,def.aoe,h2=>{ h2.hp-=def.dmg; });
             for(const z of PANDEMIC_ZONES){
@@ -1399,7 +1811,7 @@ function updateWorldStructures(){
           }else{
             target.hp-=def.dmg;
           }
-          s.cooldown=def.rate;s.flash=8;
+          s.cooldown=shotCooldown(def);s.flash=8;
           spawnTracer(s,target,def);
         }
         if(d<22&&!def.air&&!def.naval&&target!==zoneTarget){
@@ -1528,7 +1940,7 @@ function updateWorldStructures(){
             }
             const summary=extras.length?`${def.deployCount}× ${childDef.name} + ${extras.map(e=>`${e.count}× ${WORLD_BUILDS.find(b=>b.id===e.type)?.name||e.type}`).join(' + ')}`:`${def.deployCount}× ${childDef.name}`;
             flash(`🚢 ${def.name} → ${summary} ashore`,'#9bf',2400);
-            if(s.type==='carrier-ship'){s.hp=0;s._consumed=true;return}
+            // Carrier sticks around after deploy — it has its own light naval weapon.
           }
         }
       }
@@ -1543,7 +1955,7 @@ function updateWorldStructures(){
         if(d<minD){minD=d;target=h}
       });
       s.target=target;
-      if(target&&s.cooldown<=0&&worldPrepTimer<=0){target.hp-=def.dmg;s.cooldown=def.rate;s.flash=14;spawnTracer(s,target,def)}
+      if(target&&s.cooldown<=0&&worldPrepTimer<=0){target.hp-=def.dmg;s.cooldown=shotCooldown(def);s.flash=14;spawnTracer(s,target,def)}
       s.flash=Math.max(0,(s.flash||0)-1);
     }else if(s.type==='decoy'){
       // Decoy beacon — redirect nearby hordes toward the beacon. Stores original target
@@ -1588,7 +2000,7 @@ function updateWorldStructures(){
         if(d<minD){minD=d;target=h}
       });
       s.target=target;
-      if(target&&s.cooldown<=0&&worldPrepTimer<=0){target.hp-=def.dmg;s.cooldown=def.rate;s.flash=12;spawnTracer(s,target,def)}
+      if(target&&s.cooldown<=0&&worldPrepTimer<=0){target.hp-=def.dmg;s.cooldown=shotCooldown(def);s.flash=12;spawnTracer(s,target,def)}
       s.flash=Math.max(0,(s.flash||0)-1);
     }
   });
@@ -1655,6 +2067,11 @@ function updateWorldStructures(){
     // Mechs can't be infected — they leave a wreck and vanish without reanimating.
     if(def.noInfect){
       if(viewedDefId==null)flash(`✚ ${def.name} destroyed — wreck recovered`,'#9cf',1800);
+      return false;
+    }
+    // D-303 dust — vaporized by the super-missile, NEVER reanimates.
+    if(s._dusted){
+      if(viewedDefId==null)flash(`☣ ${def.name} dusted by D-303`,'#9f6',1600);
       return false;
     }
     // Division killed → may turn into a horde of zombified troops.
@@ -1772,18 +2189,110 @@ function updateWorldMap(){
   worldTimer++;
   if(worldTimer%240===0)worldDay++;
   if(worldPrepTimer>0)worldPrepTimer--;
-  // Arrow-key camera panning on the worldmap.
+  // Camera panning: ARROW KEYS only (WASD now controls the player division).
   let kdx=0,kdy=0;
-  if(keys['arrowup']||keys['w'])kdy-=1;
-  if(keys['arrowdown']||keys['s'])kdy+=1;
-  if(keys['arrowleft']||keys['a'])kdx-=1;
-  if(keys['arrowright']||keys['d'])kdx+=1;
+  if(keys['arrowup'])kdy-=1;
+  if(keys['arrowdown'])kdy+=1;
+  if(keys['arrowleft'])kdx-=1;
+  if(keys['arrowright'])kdx+=1;
   if(kdx||kdy){
     const len=Math.hypot(kdx,kdy)||1;
     const panSpd=14/Math.max(.4,wCam.zoom);
     wCam.x=Math.max(0,Math.min(MAP_W,wCam.x+kdx/len*panSpd));
     wCam.y=Math.max(0,Math.min(MAP_H,wCam.y+kdy/len*panSpd));
   }
+  // Player division control: WASD moves, E fires.
+  const playerS=worldStructures.find(u=>u._player&&(u.hp||0)>0);
+  if(playerS){
+    const pdef=WORLD_BUILDS.find(b=>b.id===playerS.type);
+    // Auto-aim: always face the nearest zombie globally so the weapon points at the threat.
+    let nearestH=null,nearestD=Infinity;
+    for(const h of hordes){
+      if((h.hp||0)<=0)continue;
+      const d=Math.hypot(h.x-playerS.x,h.y-playerS.y);
+      if(d<nearestD){nearestD=d;nearestH=h}
+    }
+    if(nearestH)playerS.target=nearestH;
+    // Cache the player's home position once. Snap to nearest land tile so respawn lands on terra firma.
+    if(playerS._home===undefined){
+      let hx,hy;
+      if(playerCountry==='upkr'){const f=FACTION_BASES.find(b=>b.name==='UPKR');if(f){hx=f.x;hy=f.y+30}}
+      else if(playerCountry==='kamw'){const f=FACTION_BASES.find(b=>b.name==='KAMW');if(f){hx=f.x;hy=f.y-30}}
+      else{const c=WORLD_CITIES.find(c=>c.id===playerCountry);if(c){hx=c.x;hy=c.y+12}}
+      // Spiral outward to find a land tile near (hx,hy) — handles cities whose dots sit just off-polygon.
+      if(hx!==undefined&&!isLand(hx,hy)){
+        outer:for(let r=4;r<=80;r+=4){
+          for(let a=0;a<16;a++){
+            const ang=a*Math.PI/8;
+            const tx=hx+Math.cos(ang)*r,ty=hy+Math.sin(ang)*r;
+            if(isLand(tx,ty)){hx=tx;hy=ty;break outer}
+          }
+        }
+      }
+      playerS._home={x:hx,y:hy};
+      if(hx!==undefined){playerS.x=hx;playerS.y=hy}
+    }
+    // Drowning timer: counts up while player is in open water with no boat. Respawns after ~1.5s.
+    const home=playerS._home;
+    if(home&&!isLand(playerS.x,playerS.y)){
+      let nb=false;
+      for(const u of worldStructures){
+        const ud=WORLD_BUILDS.find(b=>b.id===u.type);
+        if(!ud||!ud.naval||(u.hp||0)<=0)continue;
+        if(Math.hypot(u.x-playerS.x,u.y-playerS.y)<35){nb=true;break}
+      }
+      if(nb){playerS._drown=0}
+      else{
+        playerS._drown=(playerS._drown||0)+1;
+        if(playerS._drown>=90){
+          playerS.x=home.x;playerS.y=home.y;playerS._drown=0;
+          flash('🌊 Lost at sea — respawned at home','#9cf',1600);
+        }
+      }
+    }else{playerS._drown=0}
+    let pdx=0,pdy=0;
+    if(keys['w'])pdy-=1;
+    if(keys['s'])pdy+=1;
+    if(keys['a'])pdx-=1;
+    if(keys['d'])pdx+=1;
+    if(pdx||pdy){
+      const len=Math.hypot(pdx,pdy)||1;
+      let sm=1;
+      if(inForestAt(playerS.x,playerS.y))sm=.5;
+      if(inSnowyAt(playerS.x,playerS.y))sm=Math.min(sm,.5);
+      if(inMountainAt(playerS.x,playerS.y))sm=Math.min(sm,.5);
+      const spd=(pdef.spd||.45)*sm*4; // 4x faster for responsive manual control
+      const nx=playerS.x+pdx/len*spd,ny=playerS.y+pdy/len*spd;
+      // Player can't cross open water unless a friendly boat is nearby.
+      const onLand=isLand(nx,ny);
+      let nearBoat=false;
+      if(!onLand){
+        for(const u of worldStructures){
+          const ud=WORLD_BUILDS.find(b=>b.id===u.type);
+          if(!ud||!ud.naval||(u.hp||0)<=0)continue;
+          if(Math.hypot(u.x-nx,u.y-ny)<35){nearBoat=true;break}
+        }
+      }
+      if(!inToxicGasAt(nx,ny)&&(onLand||nearBoat)){playerS.x=nx;playerS.y=ny}
+    }
+  }
+  // Tick player grenades — arc travel, then AOE explode.
+  for(let i=playerGrenades.length-1;i>=0;i--){
+    const g=playerGrenades[i];
+    g.t++;
+    if(g.t>=g.dur){
+      // Detonate
+      const aoe=45,dmg=80;
+      for(const h of hordes){
+        if((h.hp||0)<=0)continue;
+        if(Math.hypot(h.x-g.tx,h.y-g.ty)<aoe)h.hp-=dmg;
+      }
+      bomberBlasts.push({x:g.tx,y:g.ty,radius:aoe,dmg:0,t:0,dur:24});
+      playerGrenades.splice(i,1);
+    }
+  }
+  // Tick portal pulse animation
+  for(const p of playerPortals)p.t++;
   if(scanActive>0)scanActive--;
   else if(scanCool>0)scanCool--;
   if(airstrikeCool>0)airstrikeCool--;
@@ -1792,6 +2301,8 @@ function updateWorldMap(){
   if(mgStrikeCool>0)mgStrikeCool--;
   if(kamikazeCool>0)kamikazeCool--;
   if(carpetCool>0)carpetCool--;
+  if(antimatterCool>0)antimatterCool--;
+  if(d303Cool>0)d303Cool--;
   // Tick kamikaze planes — fly toward target firing MG, then explode AOE on impact.
   for(let i=pendingKamikazes.length-1;i>=0;i--){
     const k=pendingKamikazes[i];
@@ -1871,6 +2382,121 @@ function updateWorldMap(){
       }
       bomberBlasts.push({x:bx,y:by,radius:CARPET_BOMB_AOE,dmg:CARPET_BOMB_DMG,t:0,dur:28});
       c.dropped++;
+    }
+  }
+  // Tick antimatter missiles — phase machine: flight → expand (black hole grows) → suck (pull + ring shrinks) → explode.
+  for(let i=pendingAntimatters.length-1;i>=0;i--){
+    const a=pendingAntimatters[i];
+    if(a.phase==='done'){pendingAntimatters.splice(i,1);continue;}
+    if(worldPrepTimer>0)continue;
+    a.t++;
+    if(a.phase==='flight'){
+      if(a.t>=ANTIMATTER_FLIGHT){
+        // Hit — micro-splash deals 1 damage to nearby hordes.
+        forHordesInRadius(a.tx,a.ty,ANTIMATTER_HIT_AOE,h=>{ h.hp-=ANTIMATTER_HIT_DMG; });
+        bomberBlasts.push({x:a.tx,y:a.ty,radius:ANTIMATTER_HIT_AOE,dmg:ANTIMATTER_HIT_DMG,t:0,dur:14});
+        a.phase='expand';a.t=0;
+      }
+    }else if(a.phase==='expand'){
+      // Black hole grows from 0 → ANTIMATTER_BH_RADIUS over ANTIMATTER_EXPAND frames.
+      if(a.t>=ANTIMATTER_EXPAND){a.phase='suck';a.t=0;}
+    }else if(a.phase==='suck'){
+      // Pull all nearby hordes toward (tx,ty); ring shrinks BH_RADIUS → 0.
+      const k=a.t/ANTIMATTER_SUCK; // 0..1
+      const ringR=ANTIMATTER_BH_RADIUS*(1-k);
+      // Pull hordes within current ring; pull strength scales with closeness to ring edge.
+      forHordesInRadius(a.tx,a.ty,ANTIMATTER_BH_RADIUS,(h,d)=>{
+        if(d<2)return;
+        const pull=ANTIMATTER_PULL*(1-d/ANTIMATTER_BH_RADIUS+0.2);
+        const ux=(a.tx-h.x)/d, uy=(a.ty-h.y)/d;
+        h.x+=ux*pull; h.y+=uy*pull;
+      });
+      // Also pull friendly mobile units toward the singularity (it's antimatter — friendly fire).
+      for(const s of worldStructures){
+        const sd=WORLD_BUILDS.find(b=>b.id===s.type);
+        if(!sd||!sd.mobile||(s.hp||0)<=0)continue;
+        const dx=a.tx-s.x,dy=a.ty-s.y,d=Math.hypot(dx,dy)||1;
+        if(d>ANTIMATTER_BH_RADIUS)continue;
+        const pull=ANTIMATTER_PULL*(1-d/ANTIMATTER_BH_RADIUS+0.2)*.7;
+        s.x+=dx/d*pull; s.y+=dy/d*pull;
+      }
+      a.ringR=ringR;
+      if(a.t>=ANTIMATTER_SUCK){
+        // Final detonation — 1000 dmg in small splash. Friendly fire too.
+        forHordesInRadius(a.tx,a.ty,ANTIMATTER_EXPLODE_AOE,h=>{ h.hp-=ANTIMATTER_EXPLODE_DMG; });
+        for(const s of worldStructures){
+          const sd=WORLD_BUILDS.find(b=>b.id===s.type);
+          if(!sd||(s.hp||0)<=0)continue;
+          if(!sd.mobile&&!sd.hp)continue;
+          if(Math.hypot(s.x-a.tx,s.y-a.ty)<ANTIMATTER_EXPLODE_AOE)s.hp-=ANTIMATTER_EXPLODE_DMG;
+        }
+        for(const z of PANDEMIC_ZONES){
+          if((z.hp||0)<=0)continue;
+          if(Math.hypot(z.x-a.tx,z.y-a.ty)<ANTIMATTER_EXPLODE_AOE)z.hp-=ANTIMATTER_EXPLODE_DMG;
+        }
+        bomberBlasts.push({x:a.tx,y:a.ty,radius:ANTIMATTER_EXPLODE_AOE,dmg:ANTIMATTER_EXPLODE_DMG,t:0,dur:36});
+        a.phase='explode';a.t=0;
+      }
+    }else if(a.phase==='explode'){
+      if(a.t>=ANTIMATTER_EXPLODE)a.phase='done';
+    }
+  }
+  // Tick D-303 missiles — flight from Japan → impact wipes ~all of China to dust + leaves a 120s toxic zone.
+  for(let i=pendingD303s.length-1;i>=0;i--){
+    const d=pendingD303s[i];
+    if(d.phase==='done'){pendingD303s.splice(i,1);continue;}
+    if(worldPrepTimer>0)continue;
+    d.t++;
+    if(d.phase==='flight'){
+      if(d.t>=D303_FLIGHT){
+        // IMPACT — 5×10¹⁸ damage to everything in the wide AOE.
+        // Hordes vaporize.
+        forHordesInRadius(d.tx,d.ty,D303_AOE,h=>{ h.hp=-D303_DMG; });
+        // Player units & structures vaporize, marked _dusted so they DON'T reanimate.
+        for(const s of worldStructures){
+          if((s.hp||0)<=0)continue;
+          if(Math.hypot(s.x-d.tx,s.y-d.ty)<D303_AOE){ s._dusted=true; s.hp=-D303_DMG; }
+        }
+        // Pandemic zones obliterated.
+        for(const z of PANDEMIC_ZONES){
+          if((z.hp||0)<=0)continue;
+          if(Math.hypot(z.x-d.tx,z.y-d.ty)<D303_AOE)z.hp=-D303_DMG;
+        }
+        // Cities inside the blast → scorched (no civilians, no respawn).
+        for(const c of WORLD_CITIES){
+          if(Math.hypot(c.x-d.tx,c.y-d.ty)<D303_AOE){
+            c.status='scorched'; c._dusted=true;
+            if(defenses[c.id])delete defenses[c.id];
+          }
+        }
+        // Leave a persistent toxic zone for 120s.
+        TOXIC_ZONES.push({x:d.tx,y:d.ty,r:D303_AOE,timer:D303_TOXIC_DURATION,maxTimer:D303_TOXIC_DURATION});
+        bomberBlasts.push({x:d.tx,y:d.ty,radius:D303_AOE,dmg:D303_DMG,t:0,dur:60});
+        flash(`☣ D-303 IMPACT — region scorched · 120s toxic zone`,'#9f6',3200);
+        d.phase='impact';d.t=0;
+      }
+    }else if(d.phase==='impact'){
+      if(d.t>=60)d.phase='done';
+    }
+  }
+  // Tick toxic zones — countdown timer; any unit/horde-target inside gets instantly zombified.
+  for(let i=TOXIC_ZONES.length-1;i>=0;i--){
+    const z=TOXIC_ZONES[i];
+    z.timer--;
+    if(z.timer<=0){TOXIC_ZONES.splice(i,1);continue;}
+    if(worldPrepTimer>0)continue;
+    // Friendly units that wander in → instantly zombified (turn into a horde at their spot).
+    for(let j=worldStructures.length-1;j>=0;j--){
+      const s=worldStructures[j];
+      const sd=WORLD_BUILDS.find(b=>b.id===s.type);
+      if(!sd||!sd.mobile||(s.hp||0)<=0)continue;
+      if(sd.naval||sd.noInfect)continue; // ships and mechs aren't infectable
+      if(Math.hypot(s.x-z.x,s.y-z.y)<z.r){
+        const tgt=pickHordeTarget(s.x,s.y);
+        if(tgt)makeHorde(s.x,s.y,2,tgt);
+        s.hp=0; // killed (will be despawned by normal cleanup; not _dusted, the horde is the conversion)
+        flash(`☣ ${sd.name} infected by toxic zone`,'#9f6',1200);
+      }
     }
   }
   // Tick pending MG strafes — plane orbits over the target spot (top-down view), strafing zombies in the kill zone.
@@ -2105,6 +2731,101 @@ function updateWorldMap(){
   }
   updateHordes();
   updateWorldStructures();
+  // Player division: fire on E after cooldown tick (same tick as AI units) — avoids double shots / held-key spam.
+  {
+    const playerS=worldStructures.find(u=>u._player&&(u.hp||0)>0);
+    if(playerS){
+      const pdef=PLAYER_WORLD_WEAPONS[playerS._weapon]||PLAYER_WORLD_WEAPONS.rifle;
+      const kind=pdef.kind||'ranged';
+      const t=playerS.target;
+      const firing=!!keys['e'];
+      if(pdef&&pdef.warmup){
+        playerS._gatWarm=firing?Math.min(pdef.warmup,(playerS._gatWarm||0)+1):0;
+      }else{
+        playerS._gatWarm=0;
+      }
+      const warmReady=!pdef.warmup||(playerS._gatWarm>=pdef.warmup);
+      // Track per-weapon ammo (only for weapons that define an `ammo` field).
+      if(pdef.ammo!=null){
+        if(playerS._ammo==null||playerS._ammoWeapon!==playerS._weapon){
+          playerS._ammoWeapon=playerS._weapon;playerS._ammo=pdef.ammo;
+        }
+      }
+      const ammoOk=pdef.ammo==null||(playerS._ammo||0)>0;
+      const consumeAmmo=()=>{
+        if(pdef.ammo!=null){
+          playerS._ammo--;
+          if(playerS._ammo<=0)flash(`${pdef.name} out of ammo`,'#f66',1400);
+        }
+      };
+      if(firing&&pdef&&worldPrepTimer<=0&&warmReady&&ammoOk&&(playerS.cooldown||0)<=0){
+        if(kind==='ranged'){
+          if(t&&(t.hp||0)>0){
+            const d=Math.hypot(t.x-playerS.x,t.y-playerS.y);
+            if(d<pdef.range){
+              if(pdef.aoe){
+                forHordesInRadius(t.x,t.y,pdef.aoe,h2=>{ h2.hp-=pdef.dmg; });
+                for(const z of PANDEMIC_ZONES){
+                  if((z.hp||0)<=0)continue;
+                  if(Math.hypot(z.x-t.x,z.y-t.y)<pdef.aoe)z.hp-=pdef.dmg;
+                }
+              }else{
+                t.hp-=pdef.dmg;
+              }
+              playerS.cooldown=shotCooldown(pdef);playerS.flash=8;
+              spawnTracer(playerS,t,pdef);
+              consumeAmmo();
+            }
+          }
+        }else if(kind==='melee'){
+          // Point-blank damage check — hit any horde within pdef.range of the player.
+          let hit=false;
+          forHordesInRadius(playerS.x,playerS.y,pdef.range,h2=>{
+            if(pdef.aoe){
+              forHordesInRadius(h2.x,h2.y,pdef.aoe,h3=>{ h3.hp-=pdef.dmg; });
+            }else{
+              h2.hp-=pdef.dmg;
+            }
+            hit=true;
+          });
+          if(hit){
+            playerS.cooldown=shotCooldown(pdef);playerS.flash=8;
+            consumeAmmo();
+          }
+        }else if(kind==='thrown'){
+          // Toss grenade in arc from player toward cursor, capped to pdef.range.
+          const wx=(mouseX-canvas.width/2)/wCam.zoom+wCam.x;
+          const wy=(mouseY-canvas.height/2)/wCam.zoom+wCam.y;
+          const dx=wx-playerS.x,dy=wy-playerS.y;
+          const dd=Math.hypot(dx,dy)||1;
+          const cap=pdef.range||120;
+          const tx=dd>cap?playerS.x+dx/dd*cap:wx;
+          const ty=dd>cap?playerS.y+dy/dd*cap:wy;
+          playerGrenades.push({sx:playerS.x,sy:playerS.y,tx,ty,t:0,dur:42});
+          playerS.cooldown=shotCooldown(pdef);playerS.flash=8;
+          consumeAmmo();
+        }else if(kind==='warper'){
+          // 1st press → place portal A, 2nd → place portal B, 3rd → teleport to A; cycle.
+          const step=playerS._warperStep||0;
+          if(step===0){
+            playerPortals.length=0;
+            playerPortals.push({x:playerS.x,y:playerS.y,t:0});
+            flash('⊙ Portal A placed','#9cf',1000);
+            playerS._warperStep=1;
+          }else if(step===1){
+            playerPortals.push({x:playerS.x,y:playerS.y,t:0});
+            flash('⊙ Portal B placed','#fc6',1000);
+            playerS._warperStep=2;
+          }else{
+            const a=playerPortals[0];
+            if(a){playerS.x=a.x;playerS.y=a.y;flash('⊙ Teleported to A','#c9f',1000);}
+            playerS._warperStep=0;
+          }
+          playerS.cooldown=shotCooldown(pdef);playerS.flash=8;
+        }
+      }
+    }
+  }
   updateWorldProjectiles();
   updateAttackedCities();
 }
@@ -2401,6 +3122,87 @@ function drawWorldMap(){
     ctx.textAlign='center';
     ctx.fillText('🌲 '+f.name,sp.x,sp.y-r*.55);
   });
+
+  // Snowy zones — pale blue/white. Slow both sides; zombies take damage.
+  SNOWY_ZONES.forEach(s=>{
+    const sp=wm2s(s.x,s.y);
+    const r=s.r*wCam.zoom;
+    const grd=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r);
+    grd.addColorStop(0,'rgba(220,235,250,.6)');
+    grd.addColorStop(.7,'rgba(200,220,240,.4)');
+    grd.addColorStop(1,'rgba(180,200,225,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.85)';
+    ctx.font=`bold ${Math.max(9,11*wCam.zoom)}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('❄ '+s.name,sp.x,sp.y-r*.55);
+  });
+
+  // Mountain zones — brown/grey rocky regions. Slow both sides.
+  MOUNTAIN_ZONES.forEach(m=>{
+    const sp=wm2s(m.x,m.y);
+    const r=m.r*wCam.zoom;
+    const grd=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r);
+    grd.addColorStop(0,'rgba(120,100,80,.55)');
+    grd.addColorStop(.7,'rgba(95,80,65,.4)');
+    grd.addColorStop(1,'rgba(70,60,50,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(200,180,160,.75)';
+    ctx.font=`bold ${Math.max(9,11*wCam.zoom)}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('⛰ '+m.name,sp.x,sp.y-r*.55);
+  });
+
+  // Toxic gas habitat zones — sickly green. Troops dissolve into gas if inside.
+  TOXIC_GAS_ZONES.forEach(z=>{
+    const sp=wm2s(z.x,z.y);
+    const r=z.r*wCam.zoom;
+    const pulse=(Math.sin(t*2)+1)/2;
+    const grd=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r);
+    grd.addColorStop(0,`rgba(120,180,80,${.45+pulse*.2})`);
+    grd.addColorStop(.7,'rgba(100,160,70,.35)');
+    grd.addColorStop(1,'rgba(80,140,60,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(200,255,150,.85)';
+    ctx.font=`bold ${Math.max(9,11*wCam.zoom)}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('☠ '+z.name,sp.x,sp.y-r*.55);
+  });
+
+  // Faction bases (UPKR / KAMW) — decorative star + label
+  FACTION_BASES.forEach(f=>{
+    const sp=wm2s(f.x,f.y);
+    const r=Math.max(6,8*wCam.zoom);
+    ctx.fillStyle=f.color;
+    ctx.beginPath();
+    for(let i=0;i<10;i++){
+      const a=i*Math.PI/5-Math.PI/2;
+      const rr=i%2===0?r:r*.45;
+      const px=sp.x+Math.cos(a)*rr,py=sp.y+Math.sin(a)*rr;
+      if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    }
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle=f.color;
+    ctx.font=`bold ${Math.max(10,12*wCam.zoom)}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText(f.name,sp.x,sp.y-r-6);
+  });
+
+  // Toxic gas puffs from dissolved troops
+  for(let i=toxicGasPuffs.length-1;i>=0;i--){
+    const p=toxicGasPuffs[i];
+    const sp=wm2s(p.x,p.y);
+    const a=1-p.t/p.dur;
+    const rad=(4+p.t*.5)*wCam.zoom;
+    ctx.fillStyle=`rgba(150,210,90,${a*.7})`;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,rad,0,Math.PI*2);ctx.fill();
+    p.t++;
+    if(p.t>=p.dur)toxicGasPuffs.splice(i,1);
+  }
 
   // Toxic gas zones — yellow warning, then green deployment cloud spilling zombies
   GAS_ZONES.forEach(g=>{
@@ -3480,22 +4282,32 @@ function drawWorldMap(){
         ctx.restore();
       }else{
         // Ground division — single ball, full division footprint, with a bold weapon silhouette.
-        const weapon={
+        let weapon={
           'rifle-div':'rifle','ar-div':'ar',
           'sniper-div':'sniper','mg-div':'mg','rpg-div':'rpg',
           'gatling-div':'gatling','pyro':'flame',
           'baguette-div':'baguette','laser-div':'laser',
         }[s.type]||'rifle';
+        if(s._player){
+          const pw=PLAYER_WORLD_WEAPONS[s._weapon];
+          if(pw&&pw.visual)weapon=pw.visual;
+        }
         const ang=s.target?Math.atan2(s.target.y-s.y,s.target.x-s.x):0;
         // Infantry footprint is smaller than vehicles (which use vr=r*1.05).
         const ballR=r*.62;
         // ground shadow
         ctx.fillStyle='rgba(0,0,0,.45)';
         ctx.beginPath();ctx.ellipse(sp.x,sp.y+ballR*.55,ballR*1.05,ballR*.4,0,0,Math.PI*2);ctx.fill();
-        // soldier ball
-        ctx.fillStyle=def.color;
-        ctx.beginPath();ctx.arc(sp.x,sp.y,ballR,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle='#000';ctx.lineWidth=Math.max(1.2,1.6*wCam.zoom);ctx.stroke();
+        // soldier ball — player's division renders its country flag instead
+        if(s._player&&playerCountry){
+          ctx.save();ctx.translate(sp.x,sp.y);
+          drawCountryFlag(ctx,ballR,playerCountry);
+          ctx.restore();
+        }else{
+          ctx.fillStyle=def.color;
+          ctx.beginPath();ctx.arc(sp.x,sp.y,ballR,0,Math.PI*2);ctx.fill();
+          ctx.strokeStyle='#000';ctx.lineWidth=Math.max(1.2,1.6*wCam.zoom);ctx.stroke();
+        }
         // weapon silhouette — drawn over the ball, pointing at target. Bold black + accent color.
         ctx.save();ctx.translate(sp.x,sp.y);ctx.rotate(ang);
         const outline=Math.max(1,1.2*wCam.zoom);
@@ -3897,6 +4709,42 @@ function drawWorldMap(){
       }
     }
   }
+  // Player Warper portals — pulsing glowing rings labeled A and B.
+  for(let i=0;i<playerPortals.length;i++){
+    const p=playerPortals[i];
+    const sp=wm2s(p.x,p.y);
+    const baseR=10*wCam.zoom;
+    const pulse=(Math.sin(p.t*.18)+1)/2;
+    const col=i===0?'#9cf':'#fc6';
+    ctx.strokeStyle=col;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,baseR*(1+pulse*.25),0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=`rgba(${i===0?'120,200,240':'240,200,100'},${.25+pulse*.3})`;
+    ctx.beginPath();ctx.arc(sp.x,sp.y,baseR*.7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=col;
+    ctx.font=`bold ${Math.max(11,13*wCam.zoom)}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText(i===0?'A':'B',sp.x,sp.y+baseR*.4);
+  }
+  // Player grenades — arc trajectory + scale (bigger at apex, smaller as it lands).
+  for(const g of playerGrenades){
+    const k=g.t/g.dur; // 0→1
+    const cx=g.sx+(g.tx-g.sx)*k, cy=g.sy+(g.ty-g.sy)*k;
+    const sp=wm2s(cx,cy);
+    // Arc: max-size in the middle, smallest at endpoints. Shadow on ground stays small.
+    const arc=Math.sin(k*Math.PI); // 0→1→0
+    const sz=(2+arc*5)*wCam.zoom;
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,.45)';
+    ctx.beginPath();ctx.ellipse(sp.x,sp.y+arc*8*wCam.zoom,sz*.9,sz*.35,0,0,Math.PI*2);ctx.fill();
+    // Grenade body — green sphere with darker top
+    ctx.fillStyle='#2a4a2a';
+    ctx.beginPath();ctx.arc(sp.x,sp.y-arc*8*wCam.zoom,sz,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#3a6a3a';
+    ctx.beginPath();ctx.arc(sp.x-sz*.25,sp.y-arc*8*wCam.zoom-sz*.25,sz*.45,0,Math.PI*2);ctx.fill();
+    // Pin highlight
+    ctx.fillStyle='#999';
+    ctx.fillRect(sp.x-sz*.1,sp.y-arc*8*wCam.zoom-sz*1.05,sz*.2,sz*.25);
+  }
   // Airstrike targeting reticle at cursor while armed
   if(armedAbility==='airstrike'){
     const aoe=AIRSTRIKE_AOE*wCam.zoom;
@@ -3958,6 +4806,34 @@ function drawWorldMap(){
     }
     ctx.fillStyle='#fb6';ctx.font='bold 13px Courier New';ctx.textAlign='center';
     ctx.fillText(`✈✈ CARPET BOMB · ${CARPET_BOMBS}× $${CARPET_COST}`,mouseX,mouseY-halfWid-6);
+  }
+  if(armedAbility==='antimatter'){
+    // Outer black-hole influence ring + inner detonation core
+    const bhR=ANTIMATTER_BH_RADIUS*wCam.zoom;
+    const expR=ANTIMATTER_EXPLODE_AOE*wCam.zoom;
+    ctx.strokeStyle='rgba(200,140,255,.55)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.arc(mouseX,mouseY,bhR,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(200,140,255,.08)';
+    ctx.beginPath();ctx.arc(mouseX,mouseY,bhR,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,200,255,.85)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(mouseX,mouseY,expR,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#c8f';ctx.font='bold 13px Courier New';ctx.textAlign='center';
+    ctx.fillText('⬣ ANTIMATTER · 1000 dmg singularity',mouseX,mouseY-bhR-6);
+  }
+  if(armedAbility==='d303'){
+    // Wide AOE ring + inner core. Shows the kill radius covering ~all of China.
+    const aoeR=D303_AOE*wCam.zoom;
+    ctx.strokeStyle='rgba(160,255,120,.6)';ctx.lineWidth=2;ctx.setLineDash([8,5]);
+    ctx.beginPath();ctx.arc(mouseX,mouseY,aoeR,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(160,255,120,.08)';
+    ctx.beginPath();ctx.arc(mouseX,mouseY,aoeR,0,Math.PI*2);ctx.fill();
+    // Toxic-hazard symbol crosshair
+    ctx.strokeStyle='rgba(160,255,120,.85)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(mouseX-12,mouseY);ctx.lineTo(mouseX+12,mouseY);ctx.moveTo(mouseX,mouseY-12);ctx.lineTo(mouseX,mouseY+12);ctx.stroke();
+    ctx.fillStyle='#9f6';ctx.font='bold 13px Courier New';ctx.textAlign='center';
+    ctx.fillText('☣ D-303 · 5×10¹⁸ dmg · 120s toxic zone',mouseX,mouseY-aoeR-6);
   }
   // Render in-flight kamikaze planes — flying toward target firing MG, then crashing.
   pendingKamikazes.forEach(k=>{
@@ -4026,6 +4902,166 @@ function drawWorldMap(){
     ctx.fillRect(-3*sc,15*sc,5*sc,4*sc);
     ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.stroke();
     ctx.restore();
+  });
+  // Render antimatter missiles — flight streak, growing black hole, sucking ring, final detonation flash.
+  pendingAntimatters.forEach(a=>{
+    const tp=wm2s(a.tx,a.ty);
+    if(a.phase==='flight'){
+      // Missile arcs from launch point to target. Bright violet streak with trailing tail.
+      const k=a.t/ANTIMATTER_FLIGHT;
+      const cx=a.fx+(a.tx-a.fx)*k, cy=a.fy+(a.ty-a.fy)*k - 60*Math.sin(k*Math.PI); // arc up
+      const cp=wm2s(cx,cy);
+      // Trail
+      const trailX=a.fx+(a.tx-a.fx)*Math.max(0,k-.18), trailY=a.fy+(a.ty-a.fy)*Math.max(0,k-.18) - 60*Math.sin(Math.max(0,k-.18)*Math.PI);
+      const tp2=wm2s(trailX,trailY);
+      ctx.strokeStyle='rgba(200,140,255,.85)';ctx.lineWidth=Math.max(2,3*wCam.zoom);ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(tp2.x,tp2.y);ctx.lineTo(cp.x,cp.y);ctx.stroke();
+      // Missile head
+      ctx.fillStyle='#fff';
+      ctx.beginPath();ctx.arc(cp.x,cp.y,Math.max(2,3*wCam.zoom),0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(200,140,255,.6)';
+      ctx.beginPath();ctx.arc(cp.x,cp.y,Math.max(4,6*wCam.zoom),0,Math.PI*2);ctx.fill();
+      // Target reticle pulse
+      const rr=ANTIMATTER_HIT_AOE*wCam.zoom;
+      ctx.strokeStyle='rgba(200,140,255,.5)';ctx.lineWidth=1.4;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,rr,0,Math.PI*2);ctx.stroke();
+      ctx.setLineDash([]);
+    }else if(a.phase==='expand'){
+      // Black hole grows from 0 to max. Dark disk with violet event-horizon ring + lensing flicker.
+      const k=a.t/ANTIMATTER_EXPAND;
+      const r=ANTIMATTER_BH_RADIUS*k*wCam.zoom;
+      // Outer accretion glow
+      const grad=ctx.createRadialGradient(tp.x,tp.y,r*.4,tp.x,tp.y,r*1.2);
+      grad.addColorStop(0,'rgba(120,40,180,.0)');
+      grad.addColorStop(.6,'rgba(160,80,220,.35)');
+      grad.addColorStop(1,'rgba(160,80,220,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r*1.2,0,Math.PI*2);ctx.fill();
+      // Black core
+      ctx.fillStyle='rgba(0,0,0,.92)';
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.fill();
+      // Event horizon
+      ctx.strokeStyle=`rgba(220,160,255,${.6+.4*Math.sin(a.t*.4)})`;
+      ctx.lineWidth=Math.max(1.5,2.2*wCam.zoom);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.stroke();
+    }else if(a.phase==='suck'){
+      // Black hole at full radius with shrinking inward ring; spiraling debris streaks suggest pull.
+      const r=ANTIMATTER_BH_RADIUS*wCam.zoom;
+      const ringR=(a.ringR||ANTIMATTER_BH_RADIUS)*wCam.zoom;
+      // Outer accretion glow (more intense)
+      const grad=ctx.createRadialGradient(tp.x,tp.y,r*.3,tp.x,tp.y,r*1.3);
+      grad.addColorStop(0,'rgba(180,80,220,.0)');
+      grad.addColorStop(.5,'rgba(180,80,220,.45)');
+      grad.addColorStop(1,'rgba(180,80,220,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r*1.3,0,Math.PI*2);ctx.fill();
+      // Black core
+      ctx.fillStyle='rgba(0,0,0,.95)';
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.fill();
+      // Outer event horizon
+      ctx.strokeStyle='rgba(220,160,255,.85)';
+      ctx.lineWidth=Math.max(1.5,2.4*wCam.zoom);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.stroke();
+      // Compressing inward ring (the singularity converging)
+      ctx.strokeStyle=`rgba(255,200,255,${.7+.3*Math.sin(a.t*.6)})`;
+      ctx.lineWidth=Math.max(2,3*wCam.zoom);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,Math.max(1,ringR),0,Math.PI*2);ctx.stroke();
+      // Spiral debris arms
+      ctx.strokeStyle='rgba(220,180,255,.55)';ctx.lineWidth=Math.max(1,1.4*wCam.zoom);
+      for(let s=0;s<6;s++){
+        const baseAng=s*Math.PI/3+a.t*.08;
+        ctx.beginPath();
+        for(let p=0;p<10;p++){
+          const pr=r*(1-p*.09);
+          const aa=baseAng+p*.35;
+          const ax=tp.x+Math.cos(aa)*pr, ay=tp.y+Math.sin(aa)*pr;
+          if(p===0)ctx.moveTo(ax,ay);else ctx.lineTo(ax,ay);
+        }
+        ctx.stroke();
+      }
+    }else if(a.phase==='explode'){
+      // Final blinding flash — bright white core, violet outer shell, fades over ANTIMATTER_EXPLODE frames.
+      const k=a.t/ANTIMATTER_EXPLODE;
+      const fade=1-k;
+      const r=ANTIMATTER_EXPLODE_AOE*wCam.zoom*(1+k*1.5);
+      const grad=ctx.createRadialGradient(tp.x,tp.y,0,tp.x,tp.y,r);
+      grad.addColorStop(0,`rgba(255,255,255,${fade})`);
+      grad.addColorStop(.4,`rgba(220,180,255,${.85*fade})`);
+      grad.addColorStop(1,'rgba(120,40,180,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.fill();
+      // Shockwave ring
+      ctx.strokeStyle=`rgba(255,255,255,${fade})`;
+      ctx.lineWidth=Math.max(1.5,2.5*wCam.zoom*fade);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.stroke();
+    }
+  });
+  // Render persistent D-303 toxic zones — sickly green hazard overlay with timer ring.
+  TOXIC_ZONES.forEach(z=>{
+    const tp=wm2s(z.x,z.y);
+    const r=z.r*wCam.zoom;
+    // Outer toxic gas cloud
+    const grad=ctx.createRadialGradient(tp.x,tp.y,r*.2,tp.x,tp.y,r);
+    grad.addColorStop(0,'rgba(160,255,80,.30)');
+    grad.addColorStop(.6,'rgba(120,200,60,.22)');
+    grad.addColorStop(1,'rgba(80,140,40,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.fill();
+    // Animated hazard ring
+    const pulse=.6+.4*Math.sin(performance.now()*.005);
+    ctx.strokeStyle=`rgba(160,255,80,${pulse})`;
+    ctx.lineWidth=Math.max(1.5,2*wCam.zoom);ctx.setLineDash([10,6]);
+    ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+    // Countdown arc — shrinks as time runs out
+    const k=z.timer/z.maxTimer;
+    ctx.strokeStyle='rgba(220,255,160,.9)';ctx.lineWidth=Math.max(2,3*wCam.zoom);
+    ctx.beginPath();ctx.arc(tp.x,tp.y,r*.3,-Math.PI/2,-Math.PI/2+Math.PI*2*k);ctx.stroke();
+    // Hazard symbol + remaining seconds
+    ctx.fillStyle='#9f6';ctx.font=`bold ${Math.max(10,12*wCam.zoom)}px Courier New`;ctx.textAlign='center';
+    ctx.fillText('☣',tp.x,tp.y+4*wCam.zoom);
+    ctx.fillStyle='rgba(220,255,180,.85)';ctx.font=`${Math.max(9,10*wCam.zoom)}px Courier New`;
+    ctx.fillText(`${Math.ceil(z.timer/60)}s`,tp.x,tp.y+r*.3+12);
+  });
+  // Render in-flight D-303 missiles — green missile streak, then big toxic impact flash.
+  pendingD303s.forEach(d=>{
+    const tp=wm2s(d.tx,d.ty);
+    if(d.phase==='flight'){
+      const k=d.t/D303_FLIGHT;
+      const cx=d.fx+(d.tx-d.fx)*k, cy=d.fy+(d.ty-d.fy)*k - 80*Math.sin(k*Math.PI);
+      const cp=wm2s(cx,cy);
+      const trailX=d.fx+(d.tx-d.fx)*Math.max(0,k-.2), trailY=d.fy+(d.ty-d.fy)*Math.max(0,k-.2) - 80*Math.sin(Math.max(0,k-.2)*Math.PI);
+      const tp2=wm2s(trailX,trailY);
+      // Green plasma streak
+      ctx.strokeStyle='rgba(160,255,120,.9)';ctx.lineWidth=Math.max(2.5,3.5*wCam.zoom);ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(tp2.x,tp2.y);ctx.lineTo(cp.x,cp.y);ctx.stroke();
+      // Missile head
+      ctx.fillStyle='#fff';
+      ctx.beginPath();ctx.arc(cp.x,cp.y,Math.max(2.5,3.5*wCam.zoom),0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(160,255,120,.7)';
+      ctx.beginPath();ctx.arc(cp.x,cp.y,Math.max(5,7*wCam.zoom),0,Math.PI*2);ctx.fill();
+      // Target reticle (wide AOE)
+      const rr=D303_AOE*wCam.zoom;
+      ctx.strokeStyle='rgba(160,255,120,.45)';ctx.lineWidth=1.5;ctx.setLineDash([6,5]);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,rr,0,Math.PI*2);ctx.stroke();
+      ctx.setLineDash([]);
+    }else if(d.phase==='impact'){
+      // Massive green/white flash, fades over 60 frames.
+      const k=d.t/60;
+      const fade=1-k;
+      const r=D303_AOE*wCam.zoom*(1+k*.4);
+      const grad=ctx.createRadialGradient(tp.x,tp.y,0,tp.x,tp.y,r);
+      grad.addColorStop(0,`rgba(255,255,255,${fade})`);
+      grad.addColorStop(.3,`rgba(200,255,140,${.9*fade})`);
+      grad.addColorStop(.7,`rgba(120,200,60,${.5*fade})`);
+      grad.addColorStop(1,'rgba(60,140,40,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.fill();
+      // Expanding shockwave ring
+      ctx.strokeStyle=`rgba(220,255,160,${fade})`;
+      ctx.lineWidth=Math.max(2,3.5*wCam.zoom*fade);
+      ctx.beginPath();ctx.arc(tp.x,tp.y,r,0,Math.PI*2);ctx.stroke();
+    }
   });
   // Render in-flight MG strafe planes — plane orbits over the target spot with a ground shadow showing altitude.
   pendingMGStrikes.forEach(m=>{
